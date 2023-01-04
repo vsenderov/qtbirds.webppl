@@ -1,0 +1,19 @@
+{
+  "name": "qtbirds",
+  "webppl": {
+    "wppl": [
+      "./lib/standard.wppl"
+    ]
+  },
+  "version": "0.0.1",
+  "description": "Quantitative Tools for assessing the Correlated Evolution of Genes and Phenotypes: Application to Birds Color Patterns (Q-T-Birds)",
+  "main": "index.js",
+  "directories": {
+    "lib": "lib"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "Viktor Senderov",
+  "license": "Apache"
+}

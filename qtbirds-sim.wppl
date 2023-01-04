@@ -1,0 +1,94 @@
+/**
+ * @file A simulator for QT-Birds data.
+ * @author Viktor Senderov
+ * 
+ * If needed install and activate npm and node:
+ *   nvm install-latest-npm
+ *   nvm install node
+ *   nvm use node
+ *  
+ * Usage:
+ *   webppl --require . qt-birds.wppl
+ * 
+ * Produces 100 samples of QT-Birds data, formated as JSON.
+ * 
+ * Requires:
+ *   - itself
+ *   - https://github.com/shinout/FASTAReader - to process DNA sequences
+ *   - phyjs - to process phylogenetic trees
+ */
+
+// Nucleotides,: A, C, G, T 
+// States: 0, 1, 2, 3 
+// TODO Validate vs AGCT encoding
+var nucleotides = ["A", "C", "G", "T"]
+
+// TODO replace this with a FASTAReader
+var startingNucleotideSequence = "AAAAAAAAAG" 
+var startingStateSequence = map(
+  function(element) {
+    nucleotides.indexOf(element)
+  },
+  startingNucleotideSequence)
+
+var characters = {
+  red: 0,
+  green: 1,
+  blue: 2
+}
+
+var startingCharacter = "green"
+var startingCharacterState = characters[startingCharacter]
+
+// var start_nucleotide = "A"
+// var start_state = nucleotides.indexOf(start_nucleotide)
+
+// // We also have the two traits starting together at 1.0
+// var start_independent_trait = 1.0
+// var start_correlated_trait = 1.0
+
+// Setup the instantaneous rate matrix
+// equal base frequencies and equal rates
+// var Q = gtr( [1/4, 1/4, 1/4, 1/4], [1, 1, 1, 1, 1, 1] ) 
+// Simplest model
+var Q = jc69()
+
+// Transition probability matrix is computed from the instantenous rate matrix
+var P = transition_probabilities(Q)
+
+// Character transition probabilies
+var QC = jc_character(3)
+var P = transition_probabilities_n(QC)
+P
+
+// var time = 10    // time units
+// var sigma2 = 1 // A value of 0.1 means that after 10 time units, we will add to
+//              // the logarithm of the trait evolving according to GBM a factor
+//              // sampled from N(0, 1)
+//              // N(0, sigma2*time)
+// var mu = 5 // substitutions per site per time unit
+//              // this means that for 10 time units we will see an average 10
+//              // subsititutions from the starting nucleotide, thus to log of the 
+//              // correlated trait we will add a factor sampled from N(0, 10) (on average)
+//              // N(0, mu*time)
+
+// var model = function() {
+//   // Run the simulation 
+//   var end_states = evolve(
+//     start_state,
+//     Math.log(start_correlated_trait),
+//     Math.log(start_independent_trait),
+//     time,
+//     Q, P, mu, Math.sqrt(sigma2)
+//   )
+//   return end_states
+// }
+
+// var dist = Infer({
+//   method: 'SMC',
+//   particles: 100,
+//   model: model
+// })
+
+// JSON.stringify(dist.samples)
+// // Expected that var(correlated trait ) ~= 10*var(independent trait)
