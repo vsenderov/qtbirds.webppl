@@ -67,6 +67,104 @@ var evolve = function(start_state,
                 Q, P, mu, sigma)
 }
 
+
+/**
+ * Straight line (branch) evolution
+ * 
+ * @param time 
+ * @param startStateSeq 
+ * @param startCharState 
+ * @param lambda Rate of character evolution
+ * @param mu Rate of molecular evolution
+ * @param nu Rate of simultaneous evolution
+ * @param P Transition probabilities for molecular evolution
+ * @param PC Transition probabilities for character evolution
+ * @param S 
+ * @param SC 
+ * @returns 
+ */
+var evolve2 = function(time, startStateSeq, startCharState, lam, mu, nu, P, PC, S, SC) {
+
+  //var argFact = (compareFn) => (array) => array.map((el, idx) => [el, idx]).reduce(compareFn)[1]
+  //var argMin = argFact((max, el) => (el[0] < max[0] ? el : max))
+  
+
+  var f = function(startState) {
+    var fn = function(currTime, currState, numCharTrans) {
+      var tLam = exponential({a: lam/startStateSeq.length})
+      var tMu = exponential({a: mu})
+      var tNu = exponential({a: nu})
+      var tArr = [tLam, tMu, tNu]
+      var eventTime = reduce(function(previous, current) {
+        return Math.min(previous, current)
+      }, tArr[0], tArr)
+      if (currTime + eventTime > time) { // we are done, future
+        return {endState: currState, numCharTrans: numCharTrans}
+      }
+      var caseT = [tLam, tMu, tNu].indexOf(eventTime);
+      if (caseT == 0) {  // pure character change
+        return fn(currTime + eventTime, currState, numCharTrans + 1)
+      } 
+      if (caseT == 1) { // pure molecular subs
+        var endState = sample(Categorical({
+          ps: P[currState],
+          vs: S[currState]
+        }))
+        return fn(currTime + eventTime, endState, numCharTrans)
+      }
+      if (caseT == 2) { // both
+        var endState = sample(Categorical({
+          ps: P[currState],
+          vs: S[currState]
+        }))
+        return fn(currTime + eventTime, endState, numCharTrans + 1)
+      } 
+    }
+    return fn(0, startState, 0)
+  }
+  
+  return map(f, startStateSeq)
+
+// // The waiting time until the transition is given by the negative
+// // of the diagonal of the transition matrix
+// var lambda = -mu*Q[start_state][start_state]
+// var time_until_substitution = sample(Exponential({a: lambda}))
+
+// if (start_time - time_until_substitution < 0) {       
+// var end_state = start_state // No nucleotide substitution
+
+// // The correlated trait didn't move
+// var end_correlated_trait_log = start_correlated_trait_log
+
+// // The independent trait evolved (GBM, zero dift) the remaining of the time
+// var trait_factor = gaussian({mu: 0,sigma: sigma*Math.sqrt(start_time)})
+// var end_independent_trait_log = start_independent_trait_log + trait_factor
+
+// return [end_state, end_correlated_trait_log, end_independent_trait_log]
+// }
+
+// // Nucleotide substitution
+// var end_state = sample(Categorical({
+// ps: P[start_state],
+// vs: possible_next_states
+// }))
+
+// // The independent trait evolved (GBM, zero drift) during the time until substitution
+// var trait_factor = gaussian({mu: 0,sigma: sigma*Math.sqrt(time_until_substitution)})
+// var end_independent_trait_log = start_independent_trait_log + trait_factor
+
+// // The correlated trait jumps once with the same base rate
+// var trait_factor2 = gaussian({mu: 0,sigma: sigma})
+// var end_correlated_trait_log = start_correlated_trait_log + trait_factor2
+
+// // tail recursion
+// return evolve(end_state,
+// end_correlated_trait_log,
+// end_independent_trait_log, 
+// start_time - time_until_substitution, 
+// Q, P, mu, sigma)
+}
+
 /** Jukes and Cantor 1969 Substitution Model, Scaled
  * 
  * @return Q   Transition matrix according to JC69
@@ -101,6 +199,24 @@ var jc_character = function(n) {
   var Q = mapN(rowf, n)
 
   return Q
+}
+
+var possible_next_states = function(n) {
+  var S = mapN(
+    function(row) {
+      var r = mapN(
+        function(col) {
+          return col
+        },
+        n
+      )
+      filter(function(e) {
+        return e != row
+      }, r)
+    }, 
+    n
+  )
+  return S
 }
 
 /** Hasegawa, Kishino and Yano 1985

@@ -24,7 +24,7 @@
 var nucleotides = ["A", "C", "G", "T"]
 
 // TODO replace this with a FASTAReader
-var startingNucleotideSequence = "AAAAAAAAAG" 
+var startingNucleotideSequence = "AAAAAAAAAA" 
 var startingStateSequence = map(
   function(element) {
     nucleotides.indexOf(element)
@@ -56,12 +56,23 @@ var Q = jc69()
 // Transition probability matrix is computed from the instantenous rate matrix
 var P = transition_probabilities(Q)
 
+// Possible next states
+var S = [ [1, 2, 3],
+          [0, 2, 3],
+          [0, 1, 3],
+          [0, 1, 2] ]
+
+
 // Character transition probabilies
 var QC = jc_character(3)
-var P = transition_probabilities_n(QC)
-P
+var SC = possible_next_states(3)
+var PC = transition_probabilities_n(QC)
 
-// var time = 10    // time units
+var time = 10 // Mya
+var lambda = 0.01 // transitions per Mya, pure character transitions
+var mu = 0.01 // subs per site per Mya, pure subsitutions
+var nu = 0.1 // simultaneous transitions and substitutions
+
 // var sigma2 = 1 // A value of 0.1 means that after 10 time units, we will add to
 //              // the logarithm of the trait evolving according to GBM a factor
 //              // sampled from N(0, 1)
@@ -72,8 +83,20 @@ P
 //              // correlated trait we will add a factor sampled from N(0, 10) (on average)
 //              // N(0, mu*time)
 
-// var model = function() {
-//   // Run the simulation 
+var model = function() {
+  var endStates = evolve2(
+    time,
+    startingStateSequence,
+    startingCharacterState,
+    lambda,
+    mu,
+    nu,
+    P,
+    PC,
+    S,
+    SC
+  )
+    console.log(endStates)
 //   var end_states = evolve(
 //     start_state,
 //     Math.log(start_correlated_trait),
@@ -81,14 +104,14 @@ P
 //     time,
 //     Q, P, mu, Math.sqrt(sigma2)
 //   )
-//   return end_states
-// }
+   return endStates
+}
 
-// var dist = Infer({
-//   method: 'SMC',
-//   particles: 100,
-//   model: model
-// })
+var dist = Infer({
+   method: 'SMC',
+   particles: 1,
+   model: model
+})
 
 // JSON.stringify(dist.samples)
 // // Expected that var(correlated trait ) ~= 10*var(independent trait)
