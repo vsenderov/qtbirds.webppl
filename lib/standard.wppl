@@ -74,9 +74,9 @@ var evolve = function(start_state,
  * @param time 
  * @param startStateSeq 
  * @param startCharState 
- * @param lambda Rate of character evolution
- * @param mu Rate of molecular evolution
- * @param nu Rate of simultaneous evolution
+ * @param lambda Rate of character evolution (character transitions per My)
+ * @param mu Rate of molecular evolution (nucleotide substitutions per site per My)
+ * @param nu Rate of simultaneous evolution (nucleotide subssitutions and character transitions per site per My)
  * @param P Transition probabilities for molecular evolution
  * @param PC Transition probabilities for character evolution
  * @param S 

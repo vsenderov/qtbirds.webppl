@@ -8,28 +8,35 @@
  *   nvm use node
  *  
  * Usage:
- *   webppl --require . qt-birds.wppl
+ *   webppl qtbirds-sim.wppl --require fasta2json --require . --require webppl-fs -- FASTA_FILE PARAMS.JSON
  * 
  * Produces 100 samples of QT-Birds data, formated as JSON.
  * 
  * Requires:
  *   - itself
- *   - https://github.com/shinout/FASTAReader - to process DNA sequences
- *   - phyjs - to process phylogenetic trees
+ *   - https://www.npmjs.com/package/fasta2json
+ *   - webppl-fs
+ *   - TODO phyjs - to process phylogenetic trees
  */
+
+var json = fasta2json.ReadFasta(argv["_"][1])
+var testData = JSON.parse(fs.read(argv["_"][2]))
 
 // Nucleotides,: A, C, G, T 
 // States: 0, 1, 2, 3 
 // TODO Validate vs AGCT encoding
-var nucleotides = ["A", "C", "G", "T"]
+var nucleotides = ["a", "c", "g", "t"]
 
 // TODO replace this with a FASTAReader
-var startingNucleotideSequence = "AAAAAAAAAA" 
-var startingStateSequence = map(
-  function(element) {
-    nucleotides.indexOf(element)
-  },
-  startingNucleotideSequence)
+var startNucSeq = json[0].seq
+
+var startStateSeq = map(
+   function(element) {
+     nucleotides.indexOf(element)
+   },
+   startNucSeq)
+
+console.log(startStateSeq)
 
 var characters = {
   red: 0,
@@ -37,81 +44,81 @@ var characters = {
   blue: 2
 }
 
-var startingCharacter = "green"
-var startingCharacterState = characters[startingCharacter]
+// var startingCharacter = "green"
+// var startingCharacterState = characters[startingCharacter]
 
-// var start_nucleotide = "A"
-// var start_state = nucleotides.indexOf(start_nucleotide)
+// // var start_nucleotide = "A"
+// // var start_state = nucleotides.indexOf(start_nucleotide)
 
-// // We also have the two traits starting together at 1.0
-// var start_independent_trait = 1.0
-// var start_correlated_trait = 1.0
+// // // We also have the two traits starting together at 1.0
+// // var start_independent_trait = 1.0
+// // var start_correlated_trait = 1.0
 
-// Setup the instantaneous rate matrix
-// equal base frequencies and equal rates
-// var Q = gtr( [1/4, 1/4, 1/4, 1/4], [1, 1, 1, 1, 1, 1] ) 
-// Simplest model
-var Q = jc69()
+// // Setup the instantaneous rate matrix
+// // equal base frequencies and equal rates
+// // var Q = gtr( [1/4, 1/4, 1/4, 1/4], [1, 1, 1, 1, 1, 1] ) 
+// // Simplest model
+// var Q = jc69()
 
-// Transition probability matrix is computed from the instantenous rate matrix
-var P = transition_probabilities(Q)
+// // Transition probability matrix is computed from the instantenous rate matrix
+// var P = transition_probabilities(Q)
 
-// Possible next states
-var S = [ [1, 2, 3],
-          [0, 2, 3],
-          [0, 1, 3],
-          [0, 1, 2] ]
+// // Possible next states
+// var S = [ [1, 2, 3],
+//           [0, 2, 3],
+//           [0, 1, 3],
+//           [0, 1, 2] ]
 
 
-// Character transition probabilies
-var QC = jc_character(3)
-var SC = possible_next_states(3)
-var PC = transition_probabilities_n(QC)
+// // Character transition probabilies
+// var QC = jc_character(3)
+// var SC = possible_next_states(3)
+// var PC = transition_probabilities_n(QC)
 
-var time = 10 // Mya
-var lambda = 0.01 // transitions per Mya, pure character transitions
-var mu = 0.01 // subs per site per Mya, pure subsitutions
-var nu = 0.1 // simultaneous transitions and substitutions
+// var time = 10 // Mya
+// var lambda = 0.01 // transitions per Mya, pure character transitions
+// var mu = 0.01 // subs per site per Mya, pure subsitutions
+// var nu = 0.1 // simultaneous transitions and substitutions
 
-// var sigma2 = 1 // A value of 0.1 means that after 10 time units, we will add to
-//              // the logarithm of the trait evolving according to GBM a factor
-//              // sampled from N(0, 1)
-//              // N(0, sigma2*time)
-// var mu = 5 // substitutions per site per time unit
-//              // this means that for 10 time units we will see an average 10
-//              // subsititutions from the starting nucleotide, thus to log of the 
-//              // correlated trait we will add a factor sampled from N(0, 10) (on average)
-//              // N(0, mu*time)
+// // var sigma2 = 1 // A value of 0.1 means that after 10 time units, we will add to
+// //              // the logarithm of the trait evolving according to GBM a factor
+// //              // sampled from N(0, 1)
+// //              // N(0, sigma2*time)
+// // var mu = 5 // substitutions per site per time unit
+// //              // this means that for 10 time units we will see an average 10
+// //              // subsititutions from the starting nucleotide, thus to log of the 
+// //              // correlated trait we will add a factor sampled from N(0, 10) (on average)
+// //              // N(0, mu*time)
 
-var model = function() {
-  var endStates = evolve2(
-    time,
-    startingStateSequence,
-    startingCharacterState,
-    lambda,
-    mu,
-    nu,
-    P,
-    PC,
-    S,
-    SC
-  )
-    console.log(endStates)
-//   var end_states = evolve(
-//     start_state,
-//     Math.log(start_correlated_trait),
-//     Math.log(start_independent_trait),
+// var model = function() {
+//   var endStates = evolve2(
 //     time,
-//     Q, P, mu, Math.sqrt(sigma2)
+//     startingStateSequence,
+//     startingCharacterState,
+//     lambda,
+//     mu,
+//     nu,
+//     P,
+//     PC,
+//     S,
+//     SC
 //   )
-   return endStates
-}
+//     console.log(endStates)
+// //   var end_states = evolve(
+// //     start_state,
+// //     Math.log(start_correlated_trait),
+// //     Math.log(start_independent_trait),
+// //     time,
+// //     Q, P, mu, Math.sqrt(sigma2)
+// //   )
+//    return endStates
+// }
 
-var dist = Infer({
-   method: 'SMC',
-   particles: 1,
-   model: model
-})
+// var dist = Infer({
+//    method: 'SMC',
+//    particles: 1,
+//    model: model
+// })
 
-// JSON.stringify(dist.samples)
-// // Expected that var(correlated trait ) ~= 10*var(independent trait)
+// // JSON.stringify(dist.samples)
+// // // Expected that var(correlated trait ) ~= 10*var(independent trait)

@@ -15,5 +15,9 @@
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "author": "Viktor Senderov",
-  "license": "Apache"
+  "license": "Apache",
+  "dependencies": {
+    "fasta2json": "^0.1.1",
+    "webppl-json": "^0.0.1"
+  }
 }
