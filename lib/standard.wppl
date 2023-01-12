@@ -71,29 +71,31 @@ var evolve = function(start_state,
 /**
  * Straight line (branch) evolution
  * 
- * @param time 
- * @param startStateSeq 
- * @param startCharState 
- * @param lambda Rate of character evolution (character transitions per My)
+ * Current limitation! Diagonal elements of QChar must be same, because
+ * we are not actually making the character transitions but only counting them.
+ * 
+ * @param lam Rate of character evolution (character transitions per My)
  * @param mu Rate of molecular evolution (nucleotide substitutions per site per My)
- * @param nu Rate of simultaneous evolution (nucleotide subssitutions and character transitions per site per My)
+ * @param nu Rate of simultaneous evolution (nucleotide subssitutions per site per My and character transitions per My)
+ * @param time time of evolution (branch length in My)
+ * @param startStateSeq 
+ * @param Q Substitution matrix
  * @param P Transition probabilities for molecular evolution
- * @param PC Transition probabilities for character evolution
- * @param S 
- * @param SC 
+ * @param nextStates 
+ * @param startCharState 
+ * @param QChar Sustitution matrix for the character transtions 
+ * @param PChar Transition probabilities for character evolution
+ * @param nextStatesChar
  * @returns 
  */
-var evolve2 = function(time, startStateSeq, startCharState, lam, mu, nu, P, PC, S, SC) {
-
-  //var argFact = (compareFn) => (array) => array.map((el, idx) => [el, idx]).reduce(compareFn)[1]
-  //var argMin = argFact((max, el) => (el[0] < max[0] ? el : max))
-  
-
+var evolve2 = function(lam, mu, nu, time, startStateSeq, Q, P, nextStates, startCharState, QChar, PChar, nextStatesChar) {  
   var f = function(startState) {
     var fn = function(currTime, currState, numCharTrans) {
-      var tLam = exponential({a: lam/startStateSeq.length})
-      var tMu = exponential({a: mu})
-      var tNu = exponential({a: nu})
+      // /startStateSeq.length
+      var tLam = exponential({a: -lam*QChar[1][1]}) // Limitation!
+      var tMu = exponential({a: -mu*Q[currState][currState]})  
+      var tNu = exponential({a: nu*QChar[1][1]*Q[currState][currState]})
+
       var tArr = [tLam, tMu, tNu]
       var eventTime = reduce(function(previous, current) {
         return Math.min(previous, current)
@@ -108,14 +110,14 @@ var evolve2 = function(time, startStateSeq, startCharState, lam, mu, nu, P, PC, 
       if (caseT == 1) { // pure molecular subs
         var endState = sample(Categorical({
           ps: P[currState],
-          vs: S[currState]
+          vs: nextStates[currState]
         }))
         return fn(currTime + eventTime, endState, numCharTrans)
       }
       if (caseT == 2) { // both
         var endState = sample(Categorical({
           ps: P[currState],
-          vs: S[currState]
+          vs: nextStates[currState]
         }))
         return fn(currTime + eventTime, endState, numCharTrans + 1)
       } 
@@ -123,7 +125,35 @@ var evolve2 = function(time, startStateSeq, startCharState, lam, mu, nu, P, PC, 
     return fn(0, startState, 0)
   }
   
-  return map(f, startStateSeq)
+  var mapResult =  map(f, startStateSeq)
+  var map_proj = function(mr, field) {
+    return (mr[field])
+  }
+  var proj_endState = function(mr) {
+    return map_proj(mr, "endState")
+  }
+  var proj_numCharTrans = function(mr) {
+    return map_proj(mr, "numCharTrans")
+  }
+
+  var endStates = map(proj_endState, mapResult)
+  var numCharTrans = sum(map(proj_numCharTrans, mapResult))
+
+  var evolveChar = function(currCharState, n) {
+    if (n == 0) {
+      return currCharState
+    } else { // transition
+      var endCharState = sample(Categorical({
+        ps: PChar[currCharState],
+        vs: nextStatesChar[currCharState]
+      }))
+      return evolveChar(endCharState, n - 1)
+    }
+  }
+  
+  var endCharState = evolveChar(startCharState, numCharTrans)
+
+  return {endStates, endCharState}
 
 // // The waiting time until the transition is given by the negative
 // // of the diagonal of the transition matrix
@@ -196,6 +226,7 @@ var jc_character = function(n) {
       },
       n)
   }
+  
   var Q = mapN(rowf, n)
 
   return Q
