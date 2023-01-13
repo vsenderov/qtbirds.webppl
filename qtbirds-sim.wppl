@@ -49,10 +49,10 @@ var startingCharState = characters.characters.indexOf(characters.startingCharact
 var nChar = characters.characters.length
 
 // Simplest model
-// var Q = jc69()
+var Q = jc69()
 
 // HKY
-var Q = hky85([0.1, 0.1, 0.4, 0.4], 1)
+//var Q = hky85([0.1, 0.1, 0.4, 0.4], 1)
 
 // Transition probability matrix is computed from the instantenous rate matrix
 var P = transition_probabilities(Q)
@@ -65,7 +65,7 @@ var nextStates = [ [1, 2, 3],
 
 
 // Character transitions
-var QChar = jc_character(nChar)
+var QChar = mymod_character(nChar)
 var PChar = transition_probabilities_n(QChar)
 var nextStatesChar = possible_next_states(nChar)
 
@@ -97,7 +97,7 @@ var model = function() {
 
 var dist = Infer({
    method: 'SMC',
-    particles: 2,
+    particles: 100,
     model: model
  })
 

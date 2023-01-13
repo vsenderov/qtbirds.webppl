@@ -92,9 +92,14 @@ var evolve2 = function(lam, mu, nu, time, startStateSeq, Q, P, nextStates, start
   var f = function(startState) {
     var fn = function(currTime, currState, numCharTrans) {
       // /startStateSeq.length
-      var tLam = exponential({a: -lam*QChar[1][1]}) // Limitation!
-      var tMu = exponential({a: -mu*Q[currState][currState]})  
-      var tNu = exponential({a: nu*QChar[1][1]*Q[currState][currState]})
+      var safeexp = function(rate) {
+        if (rate <= 0) {
+          return Infinity 
+        } else return exponential({a: rate})
+      }
+      var tLam = safeexp(-lam*QChar[1][1]) // Limitation!
+      var tMu = safeexp(-mu*Q[currState][currState])  
+      var tNu = safeexp(nu*QChar[1][1]*Q[currState][currState])
 
       var tArr = [tLam, tMu, tNu]
       var eventTime = reduce(function(previous, current) {
@@ -223,6 +228,28 @@ var jc_character = function(n) {
         if (col == row) {
           return -1
         } else return 1/(n-1)
+      },
+      n)
+  }
+  
+  var Q = mapN(rowf, n)
+
+  return Q
+}
+
+
+var mymod_character = function(n) {
+  var rowf = function(row) {
+      return mapN(function(col) { 
+        if (col == row) {
+          return -1
+        } else if ( (row == 0     && col == 1) || 
+                    (row == (n-1) && col == (n-2)) ) {
+          return 1
+        } else if ( (col == (row - 1)) || 
+                    (col == (row + 1)) ) {
+          return 0.5
+        } else return 0
       },
       n)
   }
