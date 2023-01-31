@@ -1,70 +1,77 @@
-/** Probabilistic model of correlated evolution of a nucleotide state and a phenotypic character
- *
- * @param start_state Integer
- *        The initial nucleotide state
- * @param start_correlated_trait_log Real on the logarithmic scale
- *        The initial state of the trait that will be co-evolving
- * @param start_independent_trait_log Real on the logarithmic scale
- *        The initial start state of a trait that evolving independently
- *        (GBM) as a control.
- * @param start_time     Start time in the past.
- *                       Will evolve till present (0)
- * @param Q              Rate matrix (for nucleotide evolution)
- * @param P              Transition probability matrix (for nucleotide evolution)
- * @param mu             Rate of molecular substitution (for nucleotide evolution)
- * @param sigma          Rate of phenotypic evolution (standard deivation, not variance!)
- *
- * @return [end_state, end_correlated_trait, end_independent_trait]
+/**
+ * 
+ * @param currCharState starting phenotypic character state
+ * @param n number of transitions
+ * @param phenotypeModel phenotype model
+ * @returns 
  */
-var evolve = function(start_state,
-                      start_correlated_trait_log,
-                      start_independent_trait_log,
-                      start_time,
-                      Q, P, mu, sigma) {
-  var S = [ [1, 2, 3],
-            [0, 2, 3],
-            [0, 1, 3],
-            [0, 1, 2] ]
-  var possible_next_states = S[start_state]
-  
-  // The waiting time until the transition is given by the negative
-  // of the diagonal of the transition matrix
-  var lambda = -mu*Q[start_state][start_state]
-  var time_until_substitution = sample(Exponential({a: lambda}))
-    
-  if (start_time - time_until_substitution < 0) {       
-    var end_state = start_state // No nucleotide substitution
-
-    // The correlated trait didn't move
-    var end_correlated_trait_log = start_correlated_trait_log
-
-    // The independent trait evolved (GBM, zero dift) the remaining of the time
-    var trait_factor = gaussian({mu: 0,sigma: sigma*Math.sqrt(start_time)})
-    var end_independent_trait_log = start_independent_trait_log + trait_factor
-    
-    return [end_state, end_correlated_trait_log, end_independent_trait_log]
+var evolveChar = function(currCharState, n, phenotypeModel) {
+  if (n == 0) {
+    return currCharState
+  } else { // transition
+    var endCharState = sample(Categorical({
+      ps: phenotypeModel.P[currCharState],
+      vs: phenotypeModel.nextStates[currCharState]
+    }))
+    return evolveChar(endCharState, n - 1, phenotypeModel)
   }
-  
-  // Nucleotide substitution
-  var end_state = sample(Categorical({
-    ps: P[start_state],
-    vs: possible_next_states
-  }))
+}
 
-  // The independent trait evolved (GBM, zero drift) during the time until substitution
-  var trait_factor = gaussian({mu: 0,sigma: sigma*Math.sqrt(time_until_substitution)})
-  var end_independent_trait_log = start_independent_trait_log + trait_factor
+/**
+ * Evolves a single molecular state and counts the numbe of additional phenotype transitions
+ * @param currTime time at the beginning of the function call
+ * @param currState molecular state at the beginning of the function call
+ * @param numCharTrans number of character transitions at the beginning of the function call
+ * @param time total time of evolution (end condtion)
+ * @param phenotypeModel (object)
+ * @param molecularModel (object)
+ * @param mixedModel (object)
+ * @returns {endState, numCharTrans}
+ */
+var singleStateEvolution = function(currTime, currState, numCharTrans, time, phenotypeModel, molecularModel, mixedModel) {
+  var tLam = safeexp(-phenotypeModel.rate*phenotypeModel.Q[1][1]) // Limitation, all diag elmnts must be the same
+  var tMu = safeexp(-molecularModel.rate*molecularModel.Q[currState][currState])  
+  var tNu = safeexp(mixedModel.rate*phenotypeModel.Q[1][1]*molecularModel.Q[currState][currState])
+  // TODO add the rates, instead, perhaps?
 
-  // The correlated trait jumps once with the same base rate
-  var trait_factor2 = gaussian({mu: 0,sigma: sigma})
-  var end_correlated_trait_log = start_correlated_trait_log + trait_factor2
-      
-  // tail recursion
-  return evolve(end_state,
-                end_correlated_trait_log,
-                end_independent_trait_log, 
-                start_time - time_until_substitution, 
-                Q, P, mu, sigma)
+  var tArr = [tLam, tMu, tNu]
+  var eventTime = reduce(function(previous, current) {
+    return Math.min(previous, current)
+  }, tArr[0], tArr)
+  if (currTime + eventTime > time) { // we are done, future
+    return {endState: currState, numCharTrans: numCharTrans}
+  }
+  var caseT = [tLam, tMu, tNu].indexOf(eventTime);
+  if (caseT == 0) {  // pure character change
+    return singleStateEvolution(currTime + eventTime, currState, numCharTrans + 1, time, phenotypeModel, molecularModel, mixedModel)
+  } 
+  if (caseT == 1) { // pure molecular subs
+    var endState = sample(Categorical({
+      ps: molecularModel.P[currState],
+      vs: molecularModel.nextStates[currState]
+    }))
+    return singleStateEvolution(currTime + eventTime, endState, numCharTrans, time, phenotypeModel, molecularModel, mixedModel)
+  }
+  if (caseT == 2) { // both
+    var endState = sample(Categorical({
+      ps: molecularModel.P[currState],
+      vs: molecularModel.nextStates[currState]
+    }))
+    return singleStateEvolution(currTime + eventTime, endState, numCharTrans + 1, time, phenotypeModel, molecularModel, mixedModel)
+  } 
+}
+
+
+/**
+ * Helper to able to call the exponential waiting with any parameter
+ * @param rate of the exponential distribution
+ * @returns the actual waiting time if rate is in the support of the exponential
+ *  distribution, Infinity otherwise
+ */
+var safeexp = function(rate) {
+  if (rate <= 0) {
+    return Infinity 
+  } else return exponential({a: rate})
 }
 
 
@@ -88,48 +95,11 @@ var evolve = function(start_state,
  * @param nextStatesChar
  * @returns 
  */
-var evolve2 = function(lam, mu, nu, time, startStateSeq, Q, P, nextStates, startCharState, QChar, PChar, nextStatesChar) {  
+var evolve = function( time, startStateSeq, startCharState, phenotypeModel, molecularModel, mixedModel) {  
   var f = function(startState) {
-    var fn = function(currTime, currState, numCharTrans) {
-      // /startStateSeq.length
-      var safeexp = function(rate) {
-        if (rate <= 0) {
-          return Infinity 
-        } else return exponential({a: rate})
-      }
-      var tLam = safeexp(-lam*QChar[1][1]) // Limitation!
-      var tMu = safeexp(-mu*Q[currState][currState])  
-      var tNu = safeexp(nu*QChar[1][1]*Q[currState][currState])
-
-      var tArr = [tLam, tMu, tNu]
-      var eventTime = reduce(function(previous, current) {
-        return Math.min(previous, current)
-      }, tArr[0], tArr)
-      if (currTime + eventTime > time) { // we are done, future
-        return {endState: currState, numCharTrans: numCharTrans}
-      }
-      var caseT = [tLam, tMu, tNu].indexOf(eventTime);
-      if (caseT == 0) {  // pure character change
-        return fn(currTime + eventTime, currState, numCharTrans + 1)
-      } 
-      if (caseT == 1) { // pure molecular subs
-        var endState = sample(Categorical({
-          ps: P[currState],
-          vs: nextStates[currState]
-        }))
-        return fn(currTime + eventTime, endState, numCharTrans)
-      }
-      if (caseT == 2) { // both
-        var endState = sample(Categorical({
-          ps: P[currState],
-          vs: nextStates[currState]
-        }))
-        return fn(currTime + eventTime, endState, numCharTrans + 1)
-      } 
-    }
-    return fn(0, startState, 0)
+    return singleStateEvolution(0, startState, 0, time, phenotypeModel, molecularModel, mixedModel)
   }
-  
+  // Do the single state evolution for each of starting states
   var mapResult =  map(f, startStateSeq)
   var map_proj = function(mr, field) {
     return (mr[field])
@@ -140,64 +110,66 @@ var evolve2 = function(lam, mu, nu, time, startStateSeq, Q, P, nextStates, start
   var proj_numCharTrans = function(mr) {
     return map_proj(mr, "numCharTrans")
   }
-
+  // Extract end states and total number of transitions from resulting object
   var endStates = map(proj_endState, mapResult)
   var numCharTrans = sum(map(proj_numCharTrans, mapResult))
-
-  var evolveChar = function(currCharState, n) {
-    if (n == 0) {
-      return currCharState
-    } else { // transition
-      var endCharState = sample(Categorical({
-        ps: PChar[currCharState],
-        vs: nextStatesChar[currCharState]
-      }))
-      return evolveChar(endCharState, n - 1)
-    }
-  }
+  // Evolve the characters as well
   
-  var endCharState = evolveChar(startCharState, numCharTrans)
+  var endCharState = evolveChar(startCharState, numCharTrans, phenotypeModel)
 
   return {endStates, endCharState}
+}
 
-// // The waiting time until the transition is given by the negative
-// // of the diagonal of the transition matrix
-// var lambda = -mu*Q[start_state][start_state]
-// var time_until_substitution = sample(Exponential({a: lambda}))
 
-// if (start_time - time_until_substitution < 0) {       
-// var end_state = start_state // No nucleotide substitution
+/**
+ * Coalesces two branches so that they end up with the same outcome.
+ * @param time branch length
+ * @param leftStartStateSeq 
+ * @param rightStartStateSeq 
+ * @param leftStartCharState 
+ * @param rightStartCharState 
+ * @param phenotypeModel 
+ * @param molecularModek 
+ * @param mixedModel 
+ */
+var coalesce = function(time, leftStartStateSeq, rightStartStateSeq, leftStartCharState, rightStartCharState, phenotypeModel, molecularModel, mixedModel) {
+  // Idea: resursively process the two sequences together, evolving every nucleotide
+  // to the beginning of the branch and then conditioning on the same outcome
+  // then process the phenotypic character
+  // Note: we can use the singleStateEvolution function but we have to make sure
+  // invert the models (invert the Q-matrix) if they are not symmetric.
 
-// // The correlated trait didn't move
-// var end_correlated_trait_log = start_correlated_trait_log
+  if (!(leftStartStateSeq.length == rightStartStateSeq.length)) {
+    console.log("Sequences of differing length!")
+    return -Infinity
+  }
 
-// // The independent trait evolved (GBM, zero dift) the remaining of the time
-// var trait_factor = gaussian({mu: 0,sigma: sigma*Math.sqrt(start_time)})
-// var end_independent_trait_log = start_independent_trait_log + trait_factor
+  var N = leftStartStateSeq.length
 
-// return [end_state, end_correlated_trait_log, end_independent_trait_log]
-// }
+  // conditions and returns the total number of character transitions
+  var f = function(i, leftNumTrans, rightNumTrans) {
+    if (i == N) { // we are done
+      return {leftNumTrans, rightNumTrans}
+    } else {
+      var leftRes = singleStateEvolution(0, leftStartStateSeq[i], 0, time, phenotypeModel, molecularModel, mixedModel)
+      var rightRes = singleStateEvolution(0, rightStartStateSeq[i], 0, time, phenotypeModel, molecularModel, mixedModel)
 
-// // Nucleotide substitution
-// var end_state = sample(Categorical({
-// ps: P[start_state],
-// vs: possible_next_states
-// }))
+      condition(  leftRes.endState == rightRes.endState )
+      return f(i + 1, leftNumTrans + leftRes.numCharTrans, rightNumTrans + rightRes.numCharTrans)
+    }
+  }
 
-// // The independent trait evolved (GBM, zero drift) during the time until substitution
-// var trait_factor = gaussian({mu: 0,sigma: sigma*Math.sqrt(time_until_substitution)})
-// var end_independent_trait_log = start_independent_trait_log + trait_factor
+  var numTrans = f(0, 0, 0)
 
-// // The correlated trait jumps once with the same base rate
-// var trait_factor2 = gaussian({mu: 0,sigma: sigma})
-// var end_correlated_trait_log = start_correlated_trait_log + trait_factor2
+  // now evolve the phenotypic character numTrans.leftNumTrans times on the left
+  // and numTrans.rightNumTrans on the right and condition that they ended up the
+  // same
+  var leftChar = evolveChar(leftStartCharState, numTrans.leftNumTrans, phenotypeModel)
+  var rightChar = evolveChar(rightStartCharState, numTrans.rightNumTrans, phenotypeModel)
 
-// // tail recursion
-// return evolve(end_state,
-// end_correlated_trait_log,
-// end_independent_trait_log, 
-// start_time - time_until_substitution, 
-// Q, P, mu, sigma)
+  condition(leftChar == rightChar)
+
+  return
 }
 
 /** Jukes and Cantor 1969 Substitution Model, Scaled
@@ -237,8 +209,17 @@ var jc_character = function(n) {
   return Q
 }
 
-
-var mymod_character = function(n) {
+/**
+ * 
+ * Model, where phenotypic states can only go to
+ * Transition probability only between neighboring states = 0.5
+ * Transition probability between non-neighboring states = 0
+ * Tranisition probability between the first and second state and between
+ * the last and second to last state is 1.0
+ * @param n The number of phenotypic characters
+ * @returns 
+ */
+var calcQ_senderovPhenotypic = function(n) {
   var rowf = function(row) {
       return mapN(function(col) { 
         if (col == row) {
@@ -374,3 +355,4 @@ var transition_probabilities_n = function(Q) {
   )
   return P
 }
+

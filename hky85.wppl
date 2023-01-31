@@ -1,0 +1,3 @@
+var arguments = JSON.parse(fs.read(argv["_"][1]))
+var Q = hky85(arguments.p, arguments.k)
+JSON.stringify(Q)
