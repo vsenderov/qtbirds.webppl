@@ -1,0 +1,81 @@
+/**
+ * Computes the maximum element of array `arr`
+ * @param arr 
+ * @returns max
+ */
+var listMax = function(arr) {
+  return (reduce(function(a, b) {
+        return Math.max(a, b)
+    },-Infinity, logz))
+}
+
+/**
+ * Computes the element-wise difference of array `arr` with a scalar
+ * @param arr 
+ * @param scalar 
+ * @returns element-wise difference
+ */
+var listScalarDiff = function(arr, scalar) {
+    return (map(
+      function(xi) {
+        return (xi - scalar)
+      },
+      arr
+    ))
+}
+
+/**
+ * Exponentiates the elements of an array
+ * @param arr 
+ * @returns array exponents
+ */
+var listExp = function(arr) {
+  return map(
+    function(xi) {
+      return Math.exp(xi)
+    }, 
+    arr
+  )
+}
+
+/**
+ * Log sum of exponents of array `arr` in a numerically stable way
+ * @param arr 
+ * @returns log(exp(x1 − xmax) + ⋯ + exp(xn − xmax)) + xmax
+ */
+var lse = function(arr) {
+    var maxElmt = listMax(arr)
+    var diffs = listScalarDiff(arr, maxElmt)
+    var expDiffs = listExp(diffs)
+    var logSum = Math.log(sum(expDiffs))
+    return (logSum + maxElmt)
+}
+
+
+/**
+ * Converts log weights stored in log Z to probabilities
+ * @param logz 
+ * @returns a vector of probabilities
+ */
+var logWeightsToProbs = function(logz) {
+  var lseWeights = lse(logz)
+
+  return (map(function(xi) { 
+    return Math.exp(xi - lseWeights)
+  },
+  logz
+  ))
+}
+
+/**
+ * Returns the integers 0..N-1
+ * use for indexing
+ * @param N 
+ * @returns 
+ */
+var integers = function(N) {
+  return mapN(function(i) {
+    return i
+  },
+  N)
+}
