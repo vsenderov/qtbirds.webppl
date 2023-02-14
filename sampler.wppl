@@ -1,0 +1,32 @@
+/**
+ * A sampler for webppl dist output data
+ * TODOs:
+ * - do in WebPPL not javascript
+ * - calculate the sum of the the exponents using David/Jan's trick (it's in David's lecture)
+ * - compute a probability based on it
+ * - weighted sample from it
+ * - then sample again nestedly from the support of that index in the dist object
+ * 
+ * Strategy:
+ * 
+ * - compute the LSE(x1,..., xn) = log(exp(x1 − xmax) + ⋯ + exp(xn − xmax)) + xmax
+ * - then for each x_i, the probability will be x_i/LSE(x1, ..., xn)
+ * 
+ * Usage : 
+ *   webppl sampler.wppl --require webppl-fs --require . -- \
+ *     experiments/exp1-output.json experiments/exp1-logz.json 100
+ */
+
+
+var dist = JSON.parse(fs.read(argv["_"][1]))
+var logz = JSON.parse(fs.read(argv["_"][2]))
+var n = argv["_"][3]
+
+
+
+var catCall = function() {
+  var sweepIndex = categorical({ps: logWeightsToProbs(logz), vs: integers(dist.length)})
+  return categorical({ps: dist[sweepIndex].probs, vs: dist[sweepIndex].support})
+}
+
+JSON.stringify(repeat(n, catCall))

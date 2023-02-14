@@ -2,7 +2,8 @@
   "name": "qtbirds",
   "webppl": {
     "wppl": [
-      "./lib/standard.wppl"
+      "./lib/standard.wppl",
+      "./lib/math.wppl"
     ]
   },
   "version": "0.0.1",
