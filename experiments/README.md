@@ -1,8 +1,10 @@
-# Test matrix
+# README.md
+
+## Test matrix
 
 The json chunks need to be extracted with `tools/json-extractor.js`.
 
-## Experiment 1: Only phenotypic evolution
+### Experiment 1: Only phenotypic evolution
 
 ```json exp1-rates
 {
@@ -16,9 +18,7 @@ The json chunks need to be extracted with `tools/json-extractor.js`.
 To simulate data:
 
 ```
-webppl qtbirds-sim.wppl --require fasta2json --require . --require webppl-fs\
-  -- params/sample2.fasta experiments/exp1-rates.json params/colors11.json\
-  Q/jc69.json Q/neighbor.json > experiments/exp1-data.json
+webppl qtbirds-sim.wppl --require fasta2json --require . --require webppl-fs  -- params/sample2.fasta experiments exp1-rates.json params/colors11.json Q/jc69.json Q/neighbor.json > experiments/exp1-data.json
 ```
 
 To do inference for the simulated data:
@@ -28,7 +28,7 @@ webppl qtbirds-inf.wppl --require fasta2json --require . --require webppl-fs\
   -- experiments/exp1-data.json params/rates-priors.json params/colors11.json Q/jc69.json Q/neighbor.json exp1
 ```
 
-## Experiment 2: Only molecular evolution
+### Experiment 2: Only molecular evolution
 
 ```json exp2-rates
 {
@@ -53,3 +53,9 @@ To do inference:
 webppl qtbirds-inf.wppl --require fasta2json --require . --require webppl-fs\ 
   -- experiments/exp2-data.json params/rates-priors.json params/colors11.json Q/jc69.json Q/neighbor.json exp2
 ```
+
+### Experiment 3
+
+```
+ webppl qtbirds-sim.wppl --require fasta2json --require . --require webppl-fs --require phyjs -- params/sample2.fasta trees/jeremy_crbd.tre.phyjson experiments/exp1-rates.json params/colors11.json Q/jc69.json Q/neighbor.json > experiments/exp3.treejson
+ ```

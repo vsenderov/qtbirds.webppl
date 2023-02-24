@@ -93,7 +93,7 @@ var safeexp = function(rate) {
  * @param QChar Sustitution matrix for the character transtions 
  * @param PChar Transition probabilities for character evolution
  * @param nextStatesChar
- * @returns 
+ * @returns  {endStates, endCharState}
  */
 var evolve = function( time, startStateSeq, startCharState, phenotypeModel, molecularModel, mixedModel) {  
   var f = function(startState) {
@@ -118,6 +118,51 @@ var evolve = function( time, startStateSeq, startCharState, phenotypeModel, mole
   var endCharState = evolveChar(startCharState, numCharTrans, phenotypeModel)
 
   return {endStates, endCharState}
+}
+
+
+/**
+ * Evolves the model along a supplied tree
+ * @param tree 
+ * @param evolutionFunction which function to use to evolve the branches of the tree
+ * @param time 
+ * @param startStateSeq 
+ * @param startCharState 
+ * @param phenotypeModel 
+ * @param molecularModel 
+ * @param mixedModel 
+ * @returns 
+ */
+var evolveTree = function(tree, evolutionFunction, time, startStateSeq, startCharState, phenotypeModel, molecularModel, mixedModel) {  
+  var toNucs = function(s) {
+    return molecularModel.nucleotides[s]
+  }
+
+  if(tree.type == 'node') {
+    var leftEvolution = evolve(time, startStateSeq, startCharState, phenotypeModel, molecularModel, mixedModel)
+    var rightEvolution = evolve(time, startStateSeq, startCharState, phenotypeModel, molecularModel, mixedModel)
+    //var leftNucs = map(toNucs, leftEvolution.endStates).join('')
+    //var rightNucs = map(toNucs, rightEvolution.endStates).join('')
+    var left = evolveTree(tree.left, evolutionFunction, time, leftEvolution.endStates, leftEvolution.endCharState, phenotypeModel, molecularModel, mixedModel)
+    var right = evolveTree(tree.right, evolutionFunction, time, rightEvolution.endStates, rightEvolution.endCharState, phenotypeModel, molecularModel, mixedModel)
+    return {
+      type: 'node',
+      left: left,
+      right: right,
+      age: tree.age,
+      index: tree.index
+    }
+  }
+  if (tree.type == 'leaf') {
+    
+    return {
+      type: 'leaf',
+      age: tree.age,
+      index: tree.index,
+      sequence: map(toNucs, startStateSeq).join(''),
+      character: phenotypeModel.characters[startCharState]
+    }
+  }
 }
 
 

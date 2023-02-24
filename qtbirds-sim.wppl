@@ -17,15 +17,19 @@
  *   - itself
  *   - https://www.npmjs.com/package/fasta2json
  *   - webppl-fs
- *   - TODO phyjs - to process phylogenetic trees
+ *   - phyjs - to process phylogenetic trees
  * 
  * USAGE
  * 
- *   webppl qtbirds-sim.wppl --require fasta2json --require . --require webppl-fs -- ...
+ *   webppl qtbirds-sim.wppl --require fasta2json 
+ *                           --require . 
+ *                           --require webppl-fs
+ *                           --require phyjs -- ...
  * 
  * where ... are the following  
  * 
- *   FILE.fasta - starting genetic sequence at the root
+ *   FILE.fasta - starting genetic sequence at the root 1
+ *   TREE.phyjson - fixed phylogenetic tree 2
  *   RATE.json - initial rate values at the root
  *   PHENO.json - possible phenotypic character states
  *   Q-MOL.json - molecular Q-matrix
@@ -42,25 +46,28 @@ var startStateSeq = map(
   startNucSeq
 )
 
-// read the rates and time data from argument 2
+// READ TREE 2
+var tree = phyjs.read_phyjson(argv["_"][2])
+
+// read the rates and time data from argument 3
 // TODO do some error checking if file exists
-var rates = JSON.parse(fs.read(argv["_"][2]))
+var rates = JSON.parse(fs.read(argv["_"][3]))
 var lam = rates.lam
 var mu = rates.mu
 var nu = rates.nu
 var time = rates.time
 
-// read the phenotypic data from argument 3
-var characters = JSON.parse(fs.read(argv["_"][3]))
+// read the phenotypic data from argument 4
+var characters = JSON.parse(fs.read(argv["_"][4]))
 var startingCharState = characters.characters.indexOf(characters.startingCharacter)
 var nChar = characters.characters.length
 
-// read the molecular model (Q-matrix) from argument 4
+// read the molecular model (Q-matrix) from argument 5
 //var Q = jc69()
 // HKY
 // var Q = hky85([0.1, 0.1, 0.4, 0.4], 1)
 
-var Q = JSON.parse(fs.read(argv["_"][4]))
+var Q = JSON.parse(fs.read(argv["_"][5]))
 // Transition probability matrix is computed from the instantenous rate matrix
 var P = transition_probabilities(Q)
 
@@ -74,12 +81,13 @@ var molecularModel = {
   rate: mu,
   Q: Q,
   P: P,
-  nextStates: nextStates
+  nextStates: nextStates,
+  nucleotides: nucleotides
 }
 
-// read the phenotypic model from argument 5
+// read the phenotypic model from argument 6
 //var QChar = calcQ_senderovPhenotypic(nChar)
-var QChar = JSON.parse(fs.read(argv["_"][5]))
+var QChar = JSON.parse(fs.read(argv["_"][6]))
 var PChar = transition_probabilities_n(QChar)
 var nextStatesChar = possible_next_states(nChar)
 
@@ -87,7 +95,8 @@ var phenotypeModel = {
   rate: lam,
   Q: QChar,
   P: PChar,
-  nextStates: nextStatesChar
+  nextStates: nextStatesChar,
+  characters: characters.characters
 }
 
 var mixedModel = {
@@ -95,7 +104,10 @@ var mixedModel = {
 }
 
 var model = function() {
-  var evRes = evolve(
+
+  var evRes = evolveTree(
+     tree,
+     evolve,
      time,
      startStateSeq,
      startingCharState,
@@ -104,22 +116,18 @@ var model = function() {
      mixedModel
    )
 
-  var toNucs = function(s) {
-    return nucleotides[s]
-  }
+
+  return evRes
   
-  return {
-    endSeq: map(toNucs, evRes.endStates).join(''), 
-    endChar: characters.characters[evRes.endCharState]
-  }
 }
+
 
 var dist = Infer({
    method: 'SMC',
-    particles: 200,
+    particles: 1,
     model: model
  })
 
 JSON.stringify(dist.samples)
- // // Expected that var(correlated trait ) ~= 10*var(independent trait)
+ 
 
