@@ -123,9 +123,11 @@ var evolve = function( time, startStateSeq, startCharState, phenotypeModel, mole
 
 /**
  * Evolves the model along a supplied tree
- * @param tree 
+ * 
+ * 
+ * @param tree where you start the evolution
  * @param evolutionFunction which function to use to evolve the branches of the tree
- * @param time 
+ * @param time this should not be a parameter of the function, it should be calculated 
  * @param startStateSeq 
  * @param startCharState 
  * @param phenotypeModel 
@@ -133,18 +135,18 @@ var evolve = function( time, startStateSeq, startCharState, phenotypeModel, mole
  * @param mixedModel 
  * @returns 
  */
-var evolveTree = function(tree, evolutionFunction, time, startStateSeq, startCharState, phenotypeModel, molecularModel, mixedModel) {  
+var evolveTree = function(tree, evolutionFunction, startStateSeq, startCharState, phenotypeModel, molecularModel, mixedModel) {  
   var toNucs = function(s) {
     return molecularModel.nucleotides[s]
   }
 
   if(tree.type == 'node') {
-    var leftEvolution = evolve(time, startStateSeq, startCharState, phenotypeModel, molecularModel, mixedModel)
-    var rightEvolution = evolve(time, startStateSeq, startCharState, phenotypeModel, molecularModel, mixedModel)
+    var leftEvolution = evolve(tree.age - tree.left.age, startStateSeq, startCharState, phenotypeModel, molecularModel, mixedModel)
+    var rightEvolution = evolve(tree.age - tree.right.age, startStateSeq, startCharState, phenotypeModel, molecularModel, mixedModel)
     //var leftNucs = map(toNucs, leftEvolution.endStates).join('')
     //var rightNucs = map(toNucs, rightEvolution.endStates).join('')
-    var left = evolveTree(tree.left, evolutionFunction, time, leftEvolution.endStates, leftEvolution.endCharState, phenotypeModel, molecularModel, mixedModel)
-    var right = evolveTree(tree.right, evolutionFunction, time, rightEvolution.endStates, rightEvolution.endCharState, phenotypeModel, molecularModel, mixedModel)
+    var left = evolveTree(tree.left, evolutionFunction, leftEvolution.endStates, leftEvolution.endCharState, phenotypeModel, molecularModel, mixedModel)
+    var right = evolveTree(tree.right, evolutionFunction, rightEvolution.endStates, rightEvolution.endCharState, phenotypeModel, molecularModel, mixedModel)
     return {
       type: 'node',
       left: left,
@@ -160,9 +162,127 @@ var evolveTree = function(tree, evolutionFunction, time, startStateSeq, startCha
       age: tree.age,
       index: tree.index,
       sequence: map(toNucs, startStateSeq).join(''),
-      character: phenotypeModel.characters[startCharState]
+      character: phenotypeModel.characters[startCharState],
+      stateSequence: startStateSeq, // to avoid having to decode again
+      characterState: startCharState
     }
   }
+}
+
+
+/**
+ * Coalesces an annotated tree
+ * 
+ *   - does not decode the tips
+ * 
+ * @param annotTree 
+ * @param fun 
+ * @param phenoMod
+ * @param molMod
+ * @param mixedMod
+ * 
+ * @return Collapses the tree as one "leaf", which has the coaleseced sequence and character
+ *   at the root.  Also conditions the weight in the process.
+ */
+var coalesce_annotatedTree = function(annotTree,  phenotypeModel, molecularModel, mixedModel) {
+  // if both and left and right are leaves, we have a binary path tree and we can run
+  // conditional sequence evolutionbackwards
+  if (annotTree.left.type == 'leaf' && annotTree.right.type == 'leaf') {
+    return (coalesce_binaryPathTree(annotTree, phenotypeModel, molecularModel, mixedModel))
+  } else if (annotTree.left.type == 'leaf' && annotTree.right.type == 'node') {
+    var newTree = {
+      type: 'node',
+      left: annotTree.left,
+      right: coalesce_annotatedTree(annotTree.right,  phenotypeModel, molecularModel, mixedModel),
+      age: annotTree.age,
+      index: annotTree.index
+    }
+    return (coalesce_binaryPathTree(newTree, phenotypeModel, molecularModel, mixedModel))
+  } else if (annotTree.left.type == 'node' && annotTree.right.type == 'leaf') {
+    var newTree = {
+      type: 'node',
+      left: coalesce_annotatedTree(annotTree.left,  phenotypeModel, molecularModel, mixedModel),
+      right: annotTree.right,
+      age: annotTree.age,
+      index: annotTree.index
+    }
+    return (coalesce_binaryPathTree(newTree, phenotypeModel, molecularModel, mixedModel))
+  } else {
+    var newTree = {
+      type: 'node',
+      left: coalesce_annotatedTree(annotTree.left,  phenotypeModel, molecularModel, mixedModel),
+      right: coalesce_annotatedTree(annotTree.right,  phenotypeModel, molecularModel, mixedModel),
+      age: annotTree.age,
+      index: annotTree.index
+    }
+    return (coalesce_binaryPathTree(newTree, phenotypeModel, molecularModel, mixedModel))
+  }
+}
+
+
+/**
+ * Like coalesce but returns a "leaf" with a sequence on it
+ * @param binaryPathTree - tree with decoded sequences, which only has two leafs.
+ * @param phenotypeModel 
+ * @param molecularModel 
+ * @param mixedModel 
+ * @return "leaf"
+ */
+var coalesce_binaryPathTree = function(binaryPathTree, phenotypeModel, molecularModel, mixedModel) {
+  // Idea: resursively process the two sequences together, evolving every nucleotide
+  // to the beginning of the branch and then conditioning on the same outcome
+  // then process the phenotypic character
+  // Note: we can use the singleStateEvolution function but we have to make sure
+  // invert the models (invert the Q-matrix) if they are not symmetric. Transpose, I think
+  var time = binaryPathTree.age - binaryPathTree.left.age // right should be the same
+  var leftStartStateSeq = binaryPathTree.left.stateSequence
+  var rightStartStateSeq = binaryPathTree.right.stateSequence
+  var leftStartCharState = binaryPathTree.left.characterState
+  var rightStartCharState = binaryPathTree.right.characterState
+
+  if (!(leftStartStateSeq.length == rightStartStateSeq.length)) {
+    console.log("Sequences of differing length!")
+    return -Infinity
+  }
+
+  var N = leftStartStateSeq.length
+
+  // conditions and returns the total number of character transitions
+  var f = function(i, leftNumTrans, rightNumTrans, coalescedStateSequence) {
+    if (i == N) { // we are done
+      return {leftNumTrans, rightNumTrans, coalescedStateSequence}
+    } else {
+      var leftRes = singleStateEvolution(0, leftStartStateSeq[i], 0, time, phenotypeModel, molecularModel, mixedModel)
+      var rightRes = singleStateEvolution(0, rightStartStateSeq[i], 0, time, phenotypeModel, molecularModel, mixedModel)
+
+      condition(  leftRes.endState == rightRes.endState )
+      return f(i + 1, leftNumTrans + leftRes.numCharTrans, rightNumTrans + rightRes.numCharTrans, coalescedStateSequence.concat(leftRes.endState))
+    }
+  }
+
+  var backwardsSequenceEvolution = f(0, 0, 0, [])
+
+  // now evolve the phenotypic character numTrans.leftNumTrans times on the left
+  // and numTrans.rightNumTrans on the right and condition that they ended up the
+  // same
+  var leftCharState = evolveChar(leftStartCharState, backwardsSequenceEvolution.leftNumTrans, phenotypeModel)
+  var rightCharState = evolveChar(rightStartCharState, backwardsSequenceEvolution.rightNumTrans, phenotypeModel)
+
+  condition(leftCharState == rightCharState)
+ 
+  var toNucs = function(s) {
+    return molecularModel.nucleotides[s]
+  }
+
+  return {
+    type: 'leaf',
+    age: binaryPathTree.age,
+    index: binaryPathTree.index,
+    sequence: map(toNucs, backwardsSequenceEvolution.coalescedStateSequence).join(''),
+    character: phenotypeModel.characters[leftCharState],
+    stateSequence: backwardsSequenceEvolution.coalescedStateSequence, // to avoid having to decode again
+    characterState: leftCharState
+  } 
 }
 
 
@@ -217,6 +337,9 @@ var coalesce = function(time, leftStartStateSeq, rightStartStateSeq, leftStartCh
   return
 }
 
+
+
+
 /** Jukes and Cantor 1969 Substitution Model, Scaled
  * 
  * @return Q   Transition matrix according to JC69
@@ -230,7 +353,7 @@ var jc69 = function() {
 }
 
 /**
- * Jukes-Cantor for a n-character state matrix
+ * Jukes-Cantor for a n-character state matrix (Mk model)
  * 
  * The instantaneous rates for any transition are the same.
  * 
@@ -239,7 +362,7 @@ var jc69 = function() {
  * @return Q Transition matrix
  */
 
-var jc_character = function(n) {
+var mk = function(n) {
   var rowf = function(row) {
       return mapN(function(col) { 
         if (col == row) {
@@ -253,6 +376,7 @@ var jc_character = function(n) {
 
   return Q
 }
+
 
 /**
  * 

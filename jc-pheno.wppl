@@ -1,4 +1,0 @@
-var characters = JSON.parse(fs.read(argv["_"][1]))
-var nChar = characters.characters.length
-var Q = jc_character(nChar)
-JSON.stringify(Q)
