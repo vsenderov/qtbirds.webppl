@@ -1,0 +1,35 @@
+{
+    "format": "phyjson",
+    "version": "1.0",
+    "taxa": [
+        {
+            "id": 1,
+            "name": "A"
+        },
+        {
+            "id": 2,
+            "name": "B"
+        }
+    ],
+    "trees": [
+        {
+            "name": "Main",
+            "rooted": true,
+            "root": {
+                "branch_length": 0,
+                "children": [
+                    {
+                        "branch_length": 10.0,
+                        "children": [],
+                        "taxon": 1
+                    },
+                    {
+                        "branch_length": 10.0,
+                        "children": [],
+                        "taxon": 2
+                    }
+                ]
+            }
+        }
+    ]
+}

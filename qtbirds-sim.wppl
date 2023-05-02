@@ -2,7 +2,7 @@
  * @file A Simulator for QT-Birds Data
  * @author Viktor Senderov
  * 
- * Produces (100) samples of Q-T-Birds data, formated as JSON.
+ * Produces samples of Q-T-Birds data, formated as JSON.
  * 
  * PREREQUISITES
  * 
@@ -35,6 +35,10 @@
  *   Q-MOL.json - molecular Q-matrix
  *   Q-PHENO.json - phenotypic Q-matrix
  * 
+ * EXAMPLE (copy-pasteable)
+ * 
+     webppl qtbirds-sim.wppl --require fasta2json --require . --require webppl-fs --require phyjs --  params/sample2.fasta  trees/bing_small.phyjson  experiments/exp1-rates.json  params/colors11.json  Q/jc69.json  Q/neighbor.json
+ * 
  */
 
 // read the molecular data from argument 1
@@ -55,7 +59,8 @@ var rates = JSON.parse(fs.read(argv["_"][3]))
 var lam = rates.lam
 var mu = rates.mu
 var nu = rates.nu
-var time = rates.time
+// TODO we don't care about time - it's all in the tree
+//var time = rates.time
 
 // read the phenotypic data from argument 4
 var characters = JSON.parse(fs.read(argv["_"][4]))
@@ -108,7 +113,7 @@ var model = function() {
   var evRes = evolveTree(
      tree,
      evolve,
-     time,
+     //time,
      startStateSeq,
      startingCharState,
      phenotypeModel,
