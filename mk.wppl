@@ -1,0 +1,14 @@
+/**
+ * Mk model matrix creator
+ * 
+ * Supply the characters as a JSON file in the first command line argument
+ * 
+ * EXAMPLE
+ * 
+    webppl --require webppl-fs --require . mk.wppl -- params/colors2.json > Q/mk-2state.json
+ */
+
+var characters = JSON.parse(fs.read(argv["_"][1]))
+var nChar = characters.characters.length
+var Q = mk(nChar)
+JSON.stringify(Q)
