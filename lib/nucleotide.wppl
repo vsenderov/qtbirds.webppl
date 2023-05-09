@@ -1,4 +1,5 @@
-var nucleotides = ["a", "c", "g", "t"]  // TODO Validate vs TGAC encoding
+var nucleotides = [ "t", "c", "a", "g"]  // encoding used by Yang
+// TODO need to validate the more advanced models such as the hky85 and the GTR
 
 var nextStates = [ [1, 2, 3],
                    [0, 2, 3],

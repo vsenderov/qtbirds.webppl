@@ -1,8 +1,9 @@
 /**
- * @file A Simulator for QT-Birds Data Algorithm 1
+ * @file A Simulator for QT-Birds Data Algorithm 2
  * @author Viktor Senderov
  * 
- * Produces samples of Q-T-Birds data, formated as JSON.
+ * Produces samples of Q-T-Birds data, formated as TreeJSON (not PhyJSON!)
+ * using algorithm 2 (spec: sprint 8).
  * 
  * PREREQUISITES
  * 
@@ -28,16 +29,17 @@
  * 
  * where ... are the following  
  * 
- *   FILE.fasta - starting genetic sequence at the root 1
- *   TREE.phyjson - fixed phylogenetic tree 2
- *   RATE.json - initial rate values at the root
- *   PHENO.json - possible phenotypic character states
- *   Q-MOL.json - molecular Q-matrix
- *   Q-PHENO.json - phenotypic Q-matrix
+ *   FILE.fasta - (phylo) starting genetic sequence at the root 1
+ *   TREE.phyjson - (phylo) fixed phylogenetic tree 2
+ *   RATE.json - (rates) initial rate values at the root
+ *   PHENO.json - (pheno) possible phenotypic character states
+ *   Q-MOL.Q.json - (nucleo) molecular Q-matrix
+ *   Q-PHENO.Q.json - (pheno) phenotypic Q-matrix
+ *   NPARTS - integer number of particles (default: 1)
  * 
  * EXAMPLE (copy-pasteable)
  * 
-     webppl qtbirds-sim.wppl --require fasta2json --require . --require webppl-fs --require phyjs --  params/sample2.fasta  trees/bing_small.phyjson  experiments/exp1-rates.json  params/colors11.json  Q/jc69.json  Q/neighbor.json
+webppl qtbirds-sim2.wppl --require fasta2json --require . --require webppl-fs --require phyjs --  phylo/sample2.fasta  phylo/bing_small.phyjson  rates/test1.json  pheno/11state.json  nucleo/jc69.Q.json  pheno/neighbor-11state.Q.json
  * 
  */
 
@@ -95,6 +97,15 @@ var QChar = JSON.parse(fs.read(argv["_"][6]))
 var PChar = transition_probabilities_n(QChar)
 var nextStatesChar = possible_next_states(nChar)
 
+// read the number of particles from argument 7 if present
+var getNumParts = function(position) {
+  if (argv["_"].length == (position + 1)) {
+    return(argv["_"][position]) // TODO ensure this is an integer in a good range
+  }
+  else return 1
+}
+var N = getNumParts(7)
+
 var phenotypeModel = {
   rate: lam,
   Q: QChar,
@@ -111,7 +122,7 @@ var model = function() {
 
   var evRes = evolveTree(
      tree,
-     evolve,
+     evolve2,
      //time,
      startStateSeq,
      startingCharState,
@@ -119,19 +130,13 @@ var model = function() {
      molecularModel,
      mixedModel
    )
-
-
-  return evRes
-  
+  return evRes 
 }
-
 
 var dist = Infer({
    method: 'SMC',
-    particles: 1,
+    particles: N,
     model: model
  })
 
 JSON.stringify(dist.samples)
- 
-

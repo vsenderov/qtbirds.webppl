@@ -63,6 +63,39 @@ var singleStateEvolution = function(currTime, currState, numCharTrans, time, phe
 
 
 /**
+ * Evolves a single molecular state (nucleotide) using algorithm 2
+ * @param currTime time at the beginning of the function call
+ * @param currState molecular state at the beginning of the function call
+ * @param numSJumps number of s-jumps
+ * @param time total time of evolution (end condtion)
+ * @param molecularModel (object)
+ * @param p probability of an s-jump affecting any given nucleotide
+ * @returns endState
+ */
+var singleStateEvolution2 = function(currTime, currState, numSJumps, time, molecularModel, p) {
+  /* Using Jan's walk so to say
+   (vsend, 23-05-04) For this to work, all diag elmnts of Q must be the same I think
+  */  
+  var numNJumps = sample(Poisson( {mu: (molecularModel.mu * time + numSJumps * p)} ))
+
+  // do the transition numNJumps time - recursion
+  var f = function(n, state) {
+    if (n == 0) return state
+    else {
+      var newState = sample(Categorical({
+        ps: molecularModel.P[state],
+        vs: molecularModel.nextStates[state]
+      }))
+      return f(n - 1, newState)
+    }
+  }
+
+  var endState = f(numNJumps, currState)
+  return endState
+}
+
+
+/**
  * Helper to able to call the exponential waiting with any parameter
  * @param rate of the exponential distribution
  * @returns the actual waiting time if rate is in the support of the exponential
@@ -115,6 +148,47 @@ var evolve = function( time, startStateSeq, startCharState, phenotypeModel, mole
   var numCharTrans = sum(map(proj_numCharTrans, mapResult))
   // Evolve the characters as well
   
+  var endCharState = evolveChar(startCharState, numCharTrans, phenotypeModel)
+
+  return {endStates, endCharState}
+}
+
+
+/**
+ * Straight line (branch) evolution (algorithm 2)
+ * 
+ * Current limitation! Diagonal elements of QChar must be same, because
+ * we are not actually making the character transitions but only counting them.
+ * 
+ * @param lam Rate of character evolution (character transitions per My)
+ * @param mu Rate of molecular evolution (nucleotide substitutions per site per My)
+ * @param nu Rate of simultaneous evolution (nucleotide subssitutions per site per My and character transitions per My)
+ * @param time time of evolution (branch length in My)
+ * @param startStateSeq 
+ * @param Q Substitution matrix
+ * @param P Transition probabilities for molecular evolution
+ * @param nextStates 
+ * @param startCharState 
+ * @param QChar Sustitution matrix for the character transtions 
+ * @param PChar Transition probabilities for character evolution
+ * @param nextStatesChar
+ * @returns  {endStates, endCharState}
+ */
+var evolve2 = function( time, startStateSeq, startCharState, phenotypeModel, molecularModel, mixedModel) {  
+  // sample the number of s-jumps
+  var numSJumps = sample(Poisson({mu: (mixedModel.nu * time) }))
+  var p = 1/startStateSeq.length
+
+  var f = function(startState) {
+    return singleStateEvolution2(0, startState, numSJumps, time, molecularModel, p)
+  }
+  // Do the single state evolution for each of starting states
+  var endStates =  map(f, startStateSeq)
+  
+  // Evolve the characters as well
+  var numCharTrans = sample(Poisson({mu: (phenotypeModel.lam * time + numSJumps)})) 
+  // TODO think if this should not be sample(Poisson({mu: (phenotypeModel.lam * time)}) + numSJumps
+
   var endCharState = evolveChar(startCharState, numCharTrans, phenotypeModel)
 
   return {endStates, endCharState}

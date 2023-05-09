@@ -1,13 +1,7 @@
 /**
-* @file Inference engine for Q-T-Birds
+* @file Inference engine for Q-T-Birds Algorithm 1
 * @author Viktor Senderov
 * 
-* Inference and coverage analaysis at the same time
-* 
-*   - doesn't read annotated tree, but rather
-*   - reads an unnotated tree, simulates the process
-*   - and immediately tries to recover the simulated rates
-*   - the coalesce stuff should work on tree
 * 
 * PREREQUISITES
 * 
@@ -72,7 +66,6 @@ var PChar = transition_probabilities_n(QChar)
 var nextStatesChar = possible_next_states(nChar)
 
 var experimentName = argv["_"][7]
-
 
 var model = function () {
 
