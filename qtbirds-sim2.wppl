@@ -1,0 +1,142 @@
+/**
+ * @file A Simulator for QT-Birds Data Algorithm 2
+ * @author Viktor Senderov
+ * 
+ * Produces samples of Q-T-Birds data, formated as TreeJSON (not PhyJSON!)
+ * using algorithm 2 (spec: sprint 8).
+ * 
+ * PREREQUISITES
+ * 
+ * If needed install and activate npm and node:
+ * 
+ *   nvm install-latest-npm
+ *   nvm install node
+ *   nvm use node
+ * 
+ * REQUIRED PACKAGES
+ * 
+ *   - itself
+ *   - https://www.npmjs.com/package/fasta2json
+ *   - webppl-fs
+ *   - phyjs - to process phylogenetic trees
+ * 
+ * USAGE
+ * 
+ *   webppl qtbirds-sim.wppl --require fasta2json 
+ *                           --require . 
+ *                           --require webppl-fs
+ *                           --require phyjs -- ...
+ * 
+ * where ... are the following  
+ * 
+ *   FILE.fasta - (phylo) starting genetic sequence at the root 1
+ *   TREE.phyjson - (phylo) fixed phylogenetic tree 2
+ *   RATE.json - (rates) initial rate values at the root
+ *   PHENO.json - (pheno) possible phenotypic character states
+ *   Q-MOL.Q.json - (nucleo) molecular Q-matrix
+ *   Q-PHENO.Q.json - (pheno) phenotypic Q-matrix
+ *   NPARTS - integer number of particles (default: 1)
+ * 
+ * EXAMPLE (copy-pasteable)
+ * 
+webppl qtbirds-sim2.wppl --require fasta2json --require . --require webppl-fs --require phyjs --  phylo/sample2.fasta  phylo/bing_small.phyjson  rates/test1.json  pheno/11state.json  nucleo/jc69.Q.json  pheno/neighbor-11state.Q.json
+ * 
+ */
+
+// read the molecular data from argument 1
+var fasta = fasta2json.ReadFasta(argv["_"][1])
+var startNucSeq = fasta[0].seq // TODO potential issue with multiple sequences
+var startStateSeq = map( 
+  function(element) { nucleotides.indexOf(element) },
+  startNucSeq
+)
+
+// READ TREE 2
+var tree = phyjs.read_phyjson(argv["_"][2])
+
+// read the rates and time data from argument 3
+// TODO do some error checking if file exists
+var rates = JSON.parse(fs.read(argv["_"][3]))
+var lam = rates.lam
+var mu = rates.mu
+var nu = rates.nu
+// TODO we don't care about time - it's all in the tree
+//var time = rates.time
+
+// read the phenotypic data from argument 4
+var characters = JSON.parse(fs.read(argv["_"][4]))
+var startingCharState = characters.characters.indexOf(characters.startingCharacter)
+var nChar = characters.characters.length
+
+// read the molecular model (Q-matrix) from argument 5
+//var Q = jc69()
+// HKY
+// var Q = hky85([0.1, 0.1, 0.4, 0.4], 1)
+
+var Q = JSON.parse(fs.read(argv["_"][5]))
+// Transition probability matrix is computed from the instantenous rate matrix
+var P = transition_probabilities(Q)
+
+// Possible next states, hard-coded
+var nextStates = [ [1, 2, 3],
+                   [0, 2, 3],
+                   [0, 1, 3],
+                   [0, 1, 2] ]
+
+var molecularModel = {
+  rate: mu,
+  Q: Q,
+  P: P,
+  nextStates: nextStates,
+  nucleotides: nucleotides
+}
+
+// read the phenotypic model from argument 6
+//var QChar = calcQ_senderovPhenotypic(nChar)
+var QChar = JSON.parse(fs.read(argv["_"][6]))
+var PChar = transition_probabilities_n(QChar)
+var nextStatesChar = possible_next_states(nChar)
+
+// read the number of particles from argument 7 if present
+var getNumParts = function(position) {
+  if (argv["_"].length == (position + 1)) {
+    return(argv["_"][position]) // TODO ensure this is an integer in a good range
+  }
+  else return 1
+}
+var N = getNumParts(7)
+
+var phenotypeModel = {
+  rate: lam,
+  Q: QChar,
+  P: PChar,
+  nextStates: nextStatesChar,
+  characters: characters.characters
+}
+
+var mixedModel = {
+  rate: nu
+}
+
+var model = function() {
+
+  var evRes = evolveTree(
+     tree,
+     evolve2,
+     //time,
+     startStateSeq,
+     startingCharState,
+     phenotypeModel,
+     molecularModel,
+     mixedModel
+   )
+  return evRes 
+}
+
+var dist = Infer({
+   method: 'SMC',
+    particles: N,
+    model: model
+ })
+
+JSON.stringify(dist.samples)

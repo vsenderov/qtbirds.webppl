@@ -1,5 +1,5 @@
 /**
- * @file A Simulator for QT-Birds Data
+ * @file A Simulator for QT-Birds Data Algorithm 1
  * @author Viktor Senderov
  * 
  * Produces samples of Q-T-Birds data, formated as JSON.
@@ -42,7 +42,6 @@
  */
 
 // read the molecular data from argument 1
-var nucleotides = ["a", "c", "g", "t"]  // TODO Validate vs AGCT encoding
 var fasta = fasta2json.ReadFasta(argv["_"][1])
 var startNucSeq = fasta[0].seq // TODO potential issue with multiple sequences
 var startStateSeq = map( 
