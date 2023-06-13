@@ -295,6 +295,58 @@ var coalesce_annotatedTree = function(annotTree,  phenotypeModel, molecularModel
 
 
 /**
+ * Coalesces an annotated tree algorithm 2
+ * 
+ *   - does not decode the tips
+ *   -
+ * 
+ * @param annotTree 
+ * @param fun 
+ * @param phenoMod
+ * @param molMod
+ * @param mixedMod
+ * 
+ * @return Collapses the tree as one "leaf", which has the coaleseced sequence and character
+ *   at the root.  Also conditions the weight in the process.
+ */
+var coalesce_annotatedTree2 = function(annotTree,  phenotypeModel, molecularModel, mixedModel) {
+  // if both and left and right are leaves, we have a binary path tree and we can run
+  // conditional sequence evolutionbackwards
+  if (annotTree.left.type == 'leaf' && annotTree.right.type == 'leaf') {
+    return (coalesce_binaryPathTree2(annotTree, phenotypeModel, molecularModel, mixedModel))
+  } else if (annotTree.left.type == 'leaf' && annotTree.right.type == 'node') {
+    var newTree = {
+      type: 'node',
+      left: annotTree.left,
+      right: coalesce_annotatedTree2(annotTree.right,  phenotypeModel, molecularModel, mixedModel),
+      age: annotTree.age,
+      index: annotTree.index
+    }
+    return (coalesce_binaryPathTree2(newTree, phenotypeModel, molecularModel, mixedModel))
+  } else if (annotTree.left.type == 'node' && annotTree.right.type == 'leaf') {
+    var newTree = {
+      type: 'node',
+      left: coalesce_annotatedTree2(annotTree.left,  phenotypeModel, molecularModel, mixedModel),
+      right: annotTree.right,
+      age: annotTree.age,
+      index: annotTree.index
+    }
+    return (coalesce_binaryPathTree2(newTree, phenotypeModel, molecularModel, mixedModel))
+  } else {
+    var newTree = {
+      type: 'node',
+      left: coalesce_annotatedTree2(annotTree.left,  phenotypeModel, molecularModel, mixedModel),
+      right: coalesce_annotatedTree2(annotTree.right,  phenotypeModel, molecularModel, mixedModel),
+      age: annotTree.age,
+      index: annotTree.index
+    }
+    return (coalesce_binaryPathTree2(newTree, phenotypeModel, molecularModel, mixedModel))
+  }
+}
+
+
+
+/**
  * Like coalesce but returns a "leaf" with a sequence on it
  * @param binaryPathTree - tree with decoded sequences, which only has two leafs.
  * @param phenotypeModel 
@@ -361,6 +413,136 @@ var coalesce_binaryPathTree = function(binaryPathTree, phenotypeModel, molecular
 
 
 /**
+ * converts the stateSequence of a node or leaf to a messageSequence
+ * if it does not exist, or gets it if it exists
+ * @param node
+ */
+var getMessageSequence = function(node) {
+  var getMessage = function(state) {
+    return messages[state]
+  }
+  if (node.messageSequence) {
+    return node.messageSequence
+  } else { // takes care of the original leaves
+    return(map(getMessage, node.stateSequence))
+  }
+}
+
+
+var getCharacterMessage = function(node, nChar) {
+  var getMessage = function(state) { 
+    return possible_message_states(nChar)[state]
+  }
+  if (node.characterMessage) {
+    return node.characterMessage 
+  } else { // takes care of the original leaves
+    return getMessage(node.characterState)
+  }
+}
+
+
+/**
+ * Like coalesce but returns a "leaf" with a sequence on it
+ *    (algorithm 2)
+ * @param binaryPathTree - tree with decoded sequences, which only has two leafs.
+ * @param phenotypeModel 
+ * @param molecularModel 
+ * @param mixedModel 
+ * @return "leaf"
+ */
+var coalesce_binaryPathTree2 = function(binaryPathTree, phenotypeModel, molecularModel, mixedModel) {
+  var leftTime = binaryPathTree.age - binaryPathTree.left.age
+  var rightTime = binaryPathTree.age - binaryPathTree.right.age
+
+  var leftMesSeq = getMessageSequence(binaryPathTree.left)
+  var rightMesSeq = getMessageSequence(binaryPathTree.right)
+
+  var leftCharMes = getCharacterMessage(binaryPathTree.left, phenotypeModel.characters.length)
+  var rightCharMes = getCharacterMessage(binaryPathTree.right, phenotypeModel.characters.length)
+
+  if (!(leftMesSeq.length == rightMesSeq.length)) {
+    console.log("Messages of differing length!")
+    return -Infinity
+  }
+
+  var N = leftMesSeq.length 
+
+  // we ought to take care of the s-jumps here!
+  var leftNs = poisson({mu: mixedModel.rate * leftTime})
+  var rightNs = poisson({mu: mixedModel.rate * rightTime})
+  var p = 1/N
+
+  /**
+   * Computes the transient state probabilities after simulating evolution along
+   * a branch
+   * 
+   * @param mesSeq an array the length of the nucleotide sequence,
+   *               the elements of which are vectors containing probabilities
+   *               for being in each of the allowable states at that place
+   *               in the sequence
+   * @param Q substitution rate matrix
+   * @param time evolution time
+   * @param s additional time due to s jumps
+   */
+  var computeProbSeq = function(mesSeq, time, s) {
+    var p = function(m) {
+      mExpQtrs(m, molecularModel.Q, time, molecularModel.rate, s)
+    }
+    return map(p, mesSeq)
+  }
+
+  var leftProbSeq = computeProbSeq(leftMesSeq, leftTime, leftNs*p)
+  var rightProbSeq = computeProbSeq(rightMesSeq, rightTime, rightNs*p)
+  // now these will become the new messages after coalescing
+  // elementwise leftProbSeq and rightProbSeq to get newMessageSequence
+  var newMessageSequence = mapN(function(i) { return mathjs.dotMultiply(leftProbSeq[i], rightProbSeq[i]).valueOf() }, N)
+
+  var computeCharProb = function(charMes, time, s) {
+    return  mExpQtrs(charMes, phenotypeModel.Q, time, phenotypeModel.rate, s)
+  }
+
+  var leftCharMes = computeCharProb(leftCharMes, leftTime, leftNs)
+  var rightCharMes =  computeCharProb(rightCharMes, rightTime, rightNs)
+
+  var newCharacterMessage = mathjs.dotMultiply(leftCharMes, rightCharMes).valueOf()
+
+  return {
+    type: 'leaf',
+    age: binaryPathTree.age,
+    index: binaryPathTree.index,
+    messageSequence: newMessageSequence, // to avoid having to decode again
+    characterMessage: newCharacterMessage
+  } 
+}
+
+
+/**
+ * Calculates the product of a given matrix 'm' and the exponentiated product
+ * of a substitution rate matrix 'Q', a time 't', and a rate 'r'.
+ * 
+ * The function computes the following operation: m * exp(Qtr), where exp(Qtr)
+ * is the matrix exponentiation of the product of the substitution rate matrix
+ * 'Q', the time 't', and the rate 'r'.
+ *
+ * @param {Array | Matrix} m - A matrix (as a 2D array or math.js Matrix) to be
+ *                             multiplied by the exponentiated product of Q, t, and r.
+ * @param {Array | Matrix} Q - A substitution rate matrix (as a 2D array or
+ *                             math.js Matrix) to be multiplied by the time 't'
+ *                             and the rate 'r', and then exponentiated.
+ * @param {number} t - A time value to be multiplied by the substitution rate
+ *                     matrix 'Q' and the rate 'r', and then exponentiated.
+ * @param {number} r - A rate value to be multiplied by the substitution rate
+ *                     matrix 'Q' and the time 't', and then exponentiated.
+ * @returns {Matrix} - The result of the matrix multiplication m * exp(Qtr),
+ *                     returned as a math.js Matrix object.
+ */
+var mExpQtrs = function(m, Q, t, r, s) {
+  var expQt = mathjs.expm(mathjs.multiply(Q, t*r + s));
+  return mathjs.multiply(m, expQt);
+};
+
+
+/**
  * Coalesces two branches so that they end up with the same outcome.
  * @param time branch length
  * @param leftStartStateSeq 
@@ -412,8 +594,6 @@ var coalesce = function(time, leftStartStateSeq, rightStartStateSeq, leftStartCh
 }
 
 
-
-
 /** Jukes and Cantor 1969 Substitution Model, Scaled
  * 
  * @return Q   Transition matrix according to JC69
@@ -425,6 +605,7 @@ var jc69 = function() {
     [ 1/3, 1/3, -1, 1/3 ],
     [ 1/3, 1/3, 1/3, -1 ] ]
 }
+
 
 /**
  * Jukes-Cantor for a n-character state matrix (Mk model)
@@ -500,6 +681,16 @@ var possible_next_states = function(n) {
   )
   return S
 }
+
+
+var possible_message_states = function(n) {
+  return mapN(function(row) {
+    return mapN(function(col) {
+      return row === col ? 1 : 0;
+    }, n);
+  }, n);
+};
+
 
 /** Hasegawa, Kishino and Yano 1985
  *
