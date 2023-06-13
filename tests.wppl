@@ -1,0 +1,48 @@
+
+console.log("Testing...")
+
+/**
+ * Computes the transient state probabilities after simulating evolution along
+ * a branch
+ * 
+ * @param mesSeq an array the length of the nucleotide sequence,
+ *               the elements of which are vectors containing probabilities
+ *               for being in each of the allowable states at that place
+ *               in the sequence
+ * @param Q substitution rate matrix
+ * @param time evolution time
+ */
+var computeProb = function(mesSeq, Q, t) {
+  var p = function(m) {
+    // Exponentiate the p = m * exp(Q * t)
+    var expQt = mathjs.expm(mathjs.multiply(Q, t));
+    return mathjs.multiply(m, expQt);
+  };
+
+  return map(p, mesSeq);
+};
+
+
+// Test inputs
+var mesSeq = [
+  [0.25, 0.25, 0.25, 0.25],
+  [0.4, 0.3, 0.2, 0.1]
+];
+
+var Q = [
+  [-1, 0.25, 0.5, 0.25],
+  [0.25, -1, 0.25, 0.5],
+  [0.5, 0.25, -1, 0.25],
+  [0.25, 0.5, 0.25, -1]
+];
+
+var t = 0.5;
+
+// Call computeProb with test inputs
+var result = computeProb(mesSeq, Q, t);
+
+// Convert DenseMatrix objects to plain arrays
+var plainResult = map( function(matrix)  {return matrix.valueOf()}, result);
+
+// Print the result
+console.log('Result:', plainResult);
