@@ -94,6 +94,10 @@ var model = function () {
     rate: nu
   }
 
+  // TODO spring s jumps on the tree
+  var sTree = add_sjumps(tree, mixedModel)
+  return sTree
+
   var cTree = coalesce_annotatedTree2(tree, phenotypeModel, molecularModel, mixedModel)
   // tree has been collapsed to a leaf now with transient state probs
   // for the sequence and for the character
@@ -125,28 +129,30 @@ var model = function () {
   return { lam, mu, nu }
 }
 
-var nSweeps = 250
-var nParts = 10000
+model()
 
-var infer = function () {
-  var dist = Infer({
-    method: 'SMC',
-    particles: nParts,
-    //rejuvSteps: 5, // TODO use drift kernels
-    model: model
-  })
-  return dist
-}
+// var nSweeps = 1
+// var nParts = 1
 
-var dists = repeat(nSweeps, infer)
-fs.write(experimentName + "-output.json", JSON.stringify(dists))
+// var infer = function () {
+//   var dist = Infer({
+//     method: 'SMC',
+//     particles: nParts,
+//     //rejuvSteps: 5, // TODO use drift kernels
+//     model: model
+//   })
+//   return dist
+// }
 
-var logz = map(function(dist) {
-    return dist.normalizationConstant
-}, dists)
+// var dists = repeat(nSweeps, infer)
+// fs.write(experimentName + "-output.json", JSON.stringify(dists))
 
-fs.write(experimentName + "-logz.json", JSON.stringify(logz))
-logz
+// var logz = map(function(dist) {
+//     return dist.normalizationConstant
+// }, dists)
+
+// fs.write(experimentName + "-logz.json", JSON.stringify(logz))
+// logz
 
 
 //var dist = infer()

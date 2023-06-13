@@ -790,3 +790,35 @@ var transition_probabilities_n = function(Q) {
   return P
 }
 
+
+/**
+ * Process the tree recursively and add s-jumps
+ * 
+ * @param tree
+ * @param mixedModel
+ * 
+ * @return a modified tree with s-jumps
+ */
+var add_sjumps = function(tree, mixedModel) {
+  console.log(mixedModel)
+  if (tree.type == 'leaf') {
+    return tree
+  } else { // 'node'
+    var leftTime = tree.age - tree.left.age
+    var rightTime = tree.age - tree.right.age
+    var leftNs = poisson({mu: mixedModel.rate * leftTime})
+    var rightNs = poisson({mu: mixedModel.rate * rightTime})
+
+    var newTree = {
+      type: 'node',
+      leftNs: leftNs,
+      rightNs: rightNs,
+      age: tree.age,
+      index: tree.index,
+      left: add_sjumps(tree.left, mixedModel),
+      right: add_sjumps(tree.right, mixedModel)
+    }
+
+    return newTree
+  }
+}
