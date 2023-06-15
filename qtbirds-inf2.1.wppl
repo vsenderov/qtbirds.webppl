@@ -83,7 +83,7 @@ var model = function () {
 
   var lam = gamma({ shape: rates.lam.shape, scale: rates.lam.scale })
   var mu = gamma({ shape: rates.mu.shape, scale: rates.mu.scale })
-  var nu = gamma({ shape: rates.nu.shape, scale: rates.mu.scale })
+  var nu = gamma({ shape: rates.nu.shape, scale: rates.nu.scale })
 
   var molecularModel = {
     rate: mu,

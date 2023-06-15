@@ -67,12 +67,19 @@ var PChar = transition_probabilities_n(QChar)
 var nextStatesChar = possible_next_states(nChar)
 
 var experimentName = argv["_"][7]
+var getArgumentPosition = function(position, defval) {
+  if (argv["_"][position]) return argv["_"][position]
+  else return defval
+}
+
+var nSweeps = getArgumentPosition(8, 1)
+var nParts = getArgumentPosition(9, 1000)
 
 var model = function () {
 
   var lam = gamma({ shape: rates.lam.shape, scale: rates.lam.scale })
   var mu = gamma({ shape: rates.mu.shape, scale: rates.mu.scale })
-  var nu = gamma({ shape: rates.nu.shape, scale: rates.mu.scale })
+  var nu = gamma({ shape: rates.nu.shape, scale: rates.nu.scale })
 
   var molecularModel = {
     rate: mu,
@@ -93,10 +100,6 @@ var model = function () {
   var mixedModel = {
     rate: nu
   }
-
-  // TODO spring s jumps on the tree
-  var sTree = add_sjumps(tree, mixedModel)
-  return sTree
 
   var cTree = coalesce_annotatedTree2(tree, phenotypeModel, molecularModel, mixedModel)
   // tree has been collapsed to a leaf now with transient state probs
@@ -129,30 +132,25 @@ var model = function () {
   return { lam, mu, nu }
 }
 
-model()
+var infer = function () {
+  var dist = Infer({
+    method: 'SMC',
+    particles: nParts,
+    //rejuvSteps: 5, // TODO use drift kernels
+    model: model
+  })
+  return dist
+}
 
-// var nSweeps = 1
-// var nParts = 1
+var dists = repeat(nSweeps, infer)
+fs.write(experimentName + "-output.json", JSON.stringify(dists))
 
-// var infer = function () {
-//   var dist = Infer({
-//     method: 'SMC',
-//     particles: nParts,
-//     //rejuvSteps: 5, // TODO use drift kernels
-//     model: model
-//   })
-//   return dist
-// }
+var logz = map(function(dist) {
+    return dist.normalizationConstant
+}, dists)
 
-// var dists = repeat(nSweeps, infer)
-// fs.write(experimentName + "-output.json", JSON.stringify(dists))
-
-// var logz = map(function(dist) {
-//     return dist.normalizationConstant
-// }, dists)
-
-// fs.write(experimentName + "-logz.json", JSON.stringify(logz))
-// logz
+fs.write(experimentName + "-logz.json", JSON.stringify(logz))
+logz
 
 
 //var dist = infer()

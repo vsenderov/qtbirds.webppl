@@ -1,5 +1,5 @@
 /**
-* @file Inference engine for Q-T-Birds Algorithm 2
+* @file Inference engine for Q-T-Birds Algorithm 2 (uses proper SMC)
 * @author Viktor Senderov
 * 
 * PREREQUISITES
@@ -45,6 +45,7 @@ console.log(argv["_"][1], " ignored")
 
 // READ TREE 2
 var tree = JSON.parse(fs.read(argv["_"][2]))[0]["value"]
+var N = getSequenceLength(tree)
 
 // read the rates and time data from argument 3
 // TODO do some error checking if file exists
@@ -68,16 +69,21 @@ var nextStatesChar = possible_next_states(nChar)
 
 var experimentName = argv["_"][7]
 
+var getArgumentPosition = function(position, defval) {
+  if (argv["_"][position]) return argv["_"][position]
+  else return defval
+}
+
+var nSweeps = getArgumentPosition(8, 1)
+var nParts = getArgumentPosition(9, 1000)
+
+console.log(nSweeps, nParts)
+
 var model = function () {
 
-  var gammaKernel = function(prevVal) {
-    // Use fixed shape parameter and calculate scale such that the mode is prevVal
-    return Gamma({shape: 3, scale: prevVal / (3 - 1)});
-  };
-  
-  var lam = sample( Gamma({ shape: rates.lam.shape, scale: rates.lam.scale }))//,  {driftKernel: gammaKernel})
-  var mu = sample( Gamma({ shape: rates.mu.shape, scale: rates.mu.scale }))//, {driftKernel: gammaKernel})
-  var nu = 0.00001
+  var lam = 0.000001
+  var mu = 0.000001
+  var nu = gamma({ shape: rates.nu.shape, scale: rates.nu.scale })
 
   var molecularModel = {
     rate: mu,
@@ -99,62 +105,51 @@ var model = function () {
     rate: nu
   }
 
-  var cTree = coalesce_annotatedTree2(tree, phenotypeModel, molecularModel, mixedModel)
-  // tree has been collapsed to a leaf now with transient state probs
-  // for the sequence and for the character
-  // we need to compute the equilibrium freqeuncies (priors), and use that 
-  // to specify the likelihood of obtaining said messages
-  // TODO perhaps there is a more efficient way
-  // 1. sprinkle s jumps
-  // 2. compute message all the to the root for each nucleotide
-  // 3. condition immediately
-  // 4. then compute the next one
-  // 5. finally compute the character and condition
+  // Sprinkles s jumps on the annotated tree
+  var sTree = add_sjumps(tree, mixedModel)
+  
+  // There is already a function getCharacterMessage, whose signature is
+  // (node, nChar)
+  // We need another function which computes (not gets) the message to
+  // the root for the character
+  var cTreeChar = coalesceSTreeCharacter(sTree, phenotypeModel)
 
-  // For now I am going to do something stupid (not use equilibrium frequencies)
-  //factor(Math.log(mathjs.sum(cTree.characterMessage)))
-  var logWeightChar = Math.log(mathjs.sum(cTree.characterMessage))
+  var logWeightChar = Math.log(mathjs.sum(cTreeChar.characterMessage))
+  factor(logWeightChar)
 
-  var f = function(m) {
-    //factor( Math.log(mathjs.sum(m)))
-    return Math.log(mathjs.sum(m))
+  var f = function(i) {
+    if (i >=0 && i < N) {
+      var CTreeSingleNuc = coalesceSTreeSingleNuc(i, N, sTree, molecularModel)
+      var logWeight = Math.log(mathjs.sum(CTreeSingleNuc.singleNucMessage))
+      factor(logWeight)
+      f(i + 1)
+    }
   }
 
-  //map(f, cTree.messageSequence)
-  var logWeightSeqArray = map(f, cTree.messageSequence)
-
-  var totalLogWeight = mathjs.sum(logWeightSeqArray) + logWeightChar
-  factor(totalLogWeight)
-
+  f(0)
 
   return { lam, mu, nu }
 }
 
-var nSweeps = 1
-var nParts = 200000
-
 var infer = function () {
   var dist = Infer({
-    method: 'MCMC',
-    kernel: 'MH',
-    samples: nParts,
-    burn: 20000,
-    //rejuvSteps: 5, // TODO use drift kernels
-    model: model
-  })
-  return dist
-}
+     method: 'SMC',
+     particles: nParts,
+     //rejuvSteps: 5, // TODO use drift kernels
+     model: model
+   })
+   return dist
+ }
 
 var dists = repeat(nSweeps, infer)
 fs.write(experimentName + "-output.json", JSON.stringify(dists))
 
 var logz = map(function(dist) {
-    return 0
+     return dist.normalizationConstant
 }, dists)
 
 fs.write(experimentName + "-logz.json", JSON.stringify(logz))
 logz
-
 
 //var dist = infer()
 //fs.write(experimentName + "-output.json", JSON.stringify(dist))
