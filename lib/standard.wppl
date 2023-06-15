@@ -345,7 +345,6 @@ var coalesce_annotatedTree2 = function(annotTree,  phenotypeModel, molecularMode
 }
 
 
-
 /**
  * Like coalesce but returns a "leaf" with a sequence on it
  * @param binaryPathTree - tree with decoded sequences, which only has two leafs.
@@ -425,6 +424,23 @@ var getMessageSequence = function(node) {
     return node.messageSequence
   } else { // takes care of the original leaves
     return(map(getMessage, node.stateSequence))
+  }
+}
+
+
+var getSingleNucMessage = function(i, node) {
+  var getMessage = function(state) {
+    return messages[state]
+  }
+  if (node.singleNucMessage) {
+    if (node.position != i) {
+      console.error("Single nucleotide mismatch")
+      factor(-Infinity)
+    }
+    return node.singleNucMessage
+  } else {
+    var mesSeq = map(getMessage, node.stateSequence)
+    return mesSeq[i]
   }
 }
 
@@ -763,6 +779,7 @@ var transition_probabilities = function(Q) {
   return P
 }
 
+
 /** 
  * Calculate transition probabilities from any square matrix Q
  * n x n
@@ -793,6 +810,7 @@ var transition_probabilities_n = function(Q) {
 
 /**
  * Process the tree recursively and add s-jumps
+ * need to preserve annotations
  * 
  * @param tree
  * @param mixedModel
@@ -800,7 +818,6 @@ var transition_probabilities_n = function(Q) {
  * @return a modified tree with s-jumps
  */
 var add_sjumps = function(tree, mixedModel) {
-  console.log(mixedModel)
   if (tree.type == 'leaf') {
     return tree
   } else { // 'node'
@@ -820,5 +837,173 @@ var add_sjumps = function(tree, mixedModel) {
     }
 
     return newTree
+  }
+}
+
+
+var getSequenceLength = function(tree) {
+  if (tree.type == 'leaf') {
+    return tree.stateSequence.length
+  } else return getSequenceLength(tree.left)
+}
+
+
+/**
+ * Coalesces an s-tree w.r.t. character
+ * we have the message to root w.r.t. to the character
+ * @param sTree 
+ * @param phenotypeModel 
+ * @returns coalesced s tree with .characterMessage property
+ */
+var coalesceSTreeCharacter = function(sTree, phenotypeModel) {
+  if (sTree.left.type == 'leaf' && sTree.right.type == 'leaf') {
+    return coalesceCharacterBPT(sTree, phenotypeModel)
+  } else if (sTree.left.type == 'leaf' && sTree.right.type == 'node') {
+      var newTree = {
+        type: 'node',
+        left: sTree.left,
+        right: coalesceSTreeCharacter(sTree.right, phenotypeModel),
+        age: sTree.age,
+        index: sTree.index,
+        leftNs: sTree.leftNs,
+        rightNs: sTree.rightNs
+      }
+    return coalesceCharacterBPT(newTree, phenotypeModel)
+  } else if (sTree.left.type == 'node' && sTree.right.type == 'leaf') {
+      var newTree = {
+        type: 'node',
+        left: coalesceSTreeCharacter(sTree.left, phenotypeModel),
+        right: sTree.right,
+        age: sTree.age,
+        index: sTree.index,
+        leftNs: sTree.leftNs,
+        rightNs: sTree.rightNs
+      }
+      return coalesceCharacterBPT(newTree, phenotypeModel)
+  } else { // node and node
+      var newTree = {
+        type: 'node',
+        left: coalesceSTreeCharacter(sTree.left, phenotypeModel),
+        right: coalesceSTreeCharacter(sTree.right, phenotypeModel),
+        age: sTree.age,
+        index: sTree.index,
+        leftNs: sTree.leftNs,
+        rightNs: sTree.rightNs
+      }
+      return coalesceCharacterBPT(newTree, phenotypeModel)
+  }
+}
+
+
+
+/**
+ * A function that coalesces the BPT, but only w.r.t. characterMessage
+ * contrast with coalesce_binaryPathTree2
+ * 
+ * @param sTree 
+ * @param phenotypeModel 
+ * @returns 
+ */
+var coalesceCharacterBPT = function(sTree, phenotypeModel) {
+  var leftTime = sTree.age - sTree.left.age
+  var rightTime = sTree.age - sTree.right.age
+  var leftCharMes = getCharacterMessage(sTree.left, phenotypeModel.characters.length)
+  var rightCharMes = getCharacterMessage(sTree.right, phenotypeModel.characters.length)
+  var leftNs = sTree.leftNs
+  var rightNs = sTree.rightNs
+  var computeCharProb = function(charMes, time, s) {
+    return  mExpQtrs(charMes, phenotypeModel.Q, time, phenotypeModel.rate, s)
+  }
+  var leftCharMes = computeCharProb(leftCharMes, leftTime, leftNs)
+  var rightCharMes =  computeCharProb(rightCharMes, rightTime, rightNs)
+  var newCharacterMessage = mathjs.dotMultiply(leftCharMes, rightCharMes).valueOf()
+  return {
+    type: 'leaf',
+    age: sTree.age,
+    index: sTree.index,
+    characterMessage: newCharacterMessage,
+    leftNs: sTree.leftNs,
+    rightNs: sTree.rightNs
+  }
+}
+
+
+/**
+ * Coalesces an STree w.r.t. a single nucleotide
+ * @param i 
+ * @param N seq length
+ * @param sTree 
+ * @param molecularModel 
+ * @returns 
+ */
+var coalesceSTreeSingleNuc = function(i, N, sTree, molecularModel) {
+  if (sTree.left.type == 'leaf' && sTree.right.type == 'leaf') {
+    return(coalesceSingleNucBPT(i, N, sTree, molecularModel))
+  } else if (sTree.left.type == 'leaf' && sTree.right.type == 'node') {
+      var newTree = {
+        type: 'node',
+        left: sTree.left,
+        right: coalesceSTreeSingleNuc(i, N, sTree.right, molecularModel),
+        age: sTree.age,
+        index: sTree.index,
+        leftNs: sTree.leftNs,
+        rightNs: sTree.rightNs
+      }
+    return coalesceSingleNucBPT(i, N, newTree, molecularModel)
+  } else if (sTree.left.type == 'node' && sTree.right.type == 'leaf') {
+      var newTree = {
+        type: 'node',
+        left: coalesceSTreeSingleNuc(i, N, sTree.left, molecularModel),
+        right: sTree.right,
+        age: sTree.age,
+        index: sTree.index,
+        leftNs: sTree.leftNs,
+        rightNs: sTree.rightNs
+      }
+      return coalesceSingleNucBPT(i, N, newTree, molecularModel)
+  } else { // node and node
+      var newTree = {
+        type: 'node',
+        left: coalesceSTreeSingleNuc(i, N, sTree.left, molecularModel),
+        right: coalesceSTreeSingleNuc(i, N, sTree.right, molecularModel),
+        age: sTree.age,
+        index: sTree.index,
+        leftNs: sTree.leftNs,
+        rightNs: sTree.rightNs,
+
+      }
+      return coalesceSingleNucBPT(i, N, newTree, molecularModel)
+  }
+}
+
+
+var coalesceSingleNucBPT = function(i, N, sTree, molecularModel) {
+  var leftTime = sTree.age - sTree.left.age
+  var rightTime = sTree.age - sTree.right.age
+  var leftMessage = getSingleNucMessage(i, sTree.left)
+  var rightMessage = getSingleNucMessage(i, sTree.right)
+  var leftNs = sTree.leftNs
+  var rightNs = sTree.rightNs
+  var p = 1/N
+
+  var computeProbSingleNuc = function(i, message, time, s) {
+    var p = function(m) {
+      mExpQtrs(m, molecularModel.Q, time, molecularModel.rate, s)
+    }
+    return p(message)
+  }
+  
+  var leftProbSingleNuc = computeProbSingleNuc(i, leftMessage, leftTime, leftNs*p)
+  var rightProbSingleNuc = computeProbSingleNuc(i, rightMessage, rightTime, rightNs*p)
+  var newSingleNucMessage = mathjs.dotMultiply(leftProbSingleNuc, rightProbSingleNuc).valueOf()
+
+  return {
+    type: 'leaf',
+    age: sTree.age,
+    index: sTree.index,
+    singleNucMessage: newSingleNucMessage,
+    position: i,
+    leftNs: sTree.leftNs,
+    rightNs: sTree.rightNs
   }
 }
