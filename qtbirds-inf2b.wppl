@@ -1,0 +1,158 @@
+/**
+* @file Inference engine for Q-T-Birds Algorithm 2
+* @author Viktor Senderov
+* 
+* PREREQUISITES
+* 
+* If needed install and activate npm and node:
+* 
+*   nvm install-latest-npm
+*   nvm install node
+*   nvm use node
+* 
+* REQUIRED PACKAGES
+* 
+*   - itself
+*   - https://www.npmjs.com/package/fasta2json
+*   - webppl-fs
+*   - TODO phyjs - to process phylogenetic trees
+* 
+* USAGE
+* 
+*   webppl qtbirds-inf.wppl --require fasta2json --require . --require webppl-fs -- ...
+* 
+* where ... is
+* 
+*   FILE.fasta - starting genetic sequence at the root 1 [arg1]
+*   TREE.json - annotated tree (not phyjson) 2 [arg2]
+*   RATE_PRIORS.json - rate priors [arg3]
+*   PHENO.json - possible phenotypic character states [arg4]
+*   Q-MOL.json - molecular Q-matrix [arg5]
+*   Q-PHENO.json - phenotypic Q-matrix [arg6]
+*   "experiment" - the name of the experiment as a string [arg7]
+* 
+*/
+
+// read the molecular data from argument 1
+var fasta = fasta2json.ReadFasta(argv["_"][1])
+var startNucSeq = fasta[0].seq // TODO potential issue with multiple sequences
+var startStateSeq = map(
+  function (element) { nucleotides.indexOf(element) },
+  startNucSeq
+)
+console.log(argv["_"][1], " ignored")
+
+
+// READ TREE 2
+var tree = JSON.parse(fs.read(argv["_"][2]))[0]["value"]
+
+// read the rates and time data from argument 3
+// TODO do some error checking if file exists
+var rates = JSON.parse(fs.read(argv["_"][3]))
+
+// read the phenotypic data from argument 4
+var characters = JSON.parse(fs.read(argv["_"][4]))
+var startingCharState = characters.characters.indexOf(characters.startingCharacter)
+var nChar = characters.characters.length
+
+// read the molecular model (Q-matrix) from argument 5
+var Q = JSON.parse(fs.read(argv["_"][5]))
+
+// Transition probability matrix is computed from the instantenous rate matrix
+var P = transition_probabilities(Q)
+
+// read the phenotypic model from argument 6
+var QChar = JSON.parse(fs.read(argv["_"][6]))
+var PChar = transition_probabilities_n(QChar)
+var nextStatesChar = possible_next_states(nChar)
+
+var experimentName = argv["_"][7]
+var getArgumentPosition = function(position, defval) {
+  if (argv["_"][position]) return argv["_"][position]
+  else return defval
+}
+
+var nSweeps = getArgumentPosition(8, 1)
+var nParts = getArgumentPosition(9, 1000)
+
+var model = function () {
+
+  var lam = 0.000001
+  var mu = 0.000001
+  var nu = gamma({ shape: rates.nu.shape, scale: rates.nu.scale })
+
+  var molecularModel = {
+    rate: mu,
+    Q: Q,
+    P: P,
+    nextStates: nextStates,
+    nucleotides: nucleotides
+  }
+
+  var phenotypeModel = {
+    rate: lam,
+    Q: QChar,
+    P: PChar,
+    nextStates: nextStatesChar,
+    characters: characters.characters
+  }
+
+  var mixedModel = {
+    rate: nu
+  }
+
+  var cTree = coalesce_annotatedTree2(tree, phenotypeModel, molecularModel, mixedModel)
+  // tree has been collapsed to a leaf now with transient state probs
+  // for the sequence and for the character
+  // we need to compute the equilibrium freqeuncies (priors), and use that 
+  // to specify the likelihood of obtaining said messages
+  // TODO perhaps there is a more efficient way
+  // 1. sprinkle s jumps
+  // 2. compute message all the to the root for each nucleotide
+  // 3. condition immediately
+  // 4. then compute the next one
+  // 5. finally compute the character and condition
+
+  // For now I am going to do something stupid (not use equilibrium frequencies)
+  //factor(Math.log(mathjs.sum(cTree.characterMessage)))
+  var logWeightChar = Math.log(mathjs.sum(cTree.characterMessage))
+
+  var f = function(m) {
+    //factor( Math.log(mathjs.sum(m)))
+    return Math.log(mathjs.sum(m))
+  }
+
+  //map(f, cTree.messageSequence)
+  var logWeightSeqArray = map(f, cTree.messageSequence)
+
+  var totalLogWeight = mathjs.sum(logWeightSeqArray) + logWeightChar
+  factor(totalLogWeight)
+
+
+  return { lam, mu, nu }
+}
+
+var infer = function () {
+  var dist = Infer({
+    method: 'SMC',
+    particles: nParts,
+    //rejuvSteps: 5, // TODO use drift kernels
+    model: model
+  })
+  return dist
+}
+
+var dists = repeat(nSweeps, infer)
+fs.write(experimentName + "-output.json", JSON.stringify(dists))
+
+var logz = map(function(dist) {
+    return dist.normalizationConstant
+}, dists)
+
+fs.write(experimentName + "-logz.json", JSON.stringify(logz))
+logz
+
+
+//var dist = infer()
+//fs.write(experimentName + "-output.json", JSON.stringify(dist))
+//dist.normalizationConstant
