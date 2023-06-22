@@ -1,5 +1,5 @@
 /**
- * @file A Simulator for QT-Birds Data Algorithm 1
+ * @file A Simulator for QT-Birds Data Algorithm 1 (direct approach)
  * @author Viktor Senderov
  * 
  * Produces samples of Q-T-Birds data, formated as JSON.
@@ -36,8 +36,12 @@
  *   Q-PHENO.json - phenotypic Q-matrix
  * 
  * EXAMPLE (copy-pasteable)
- * 
-     webppl qtbirds-sim.wppl --require fasta2json --require . --require webppl-fs --require phyjs --  params/sample2.fasta  trees/bing_small.phyjson  experiments/exp1-rates.json  params/colors11.json  Q/jc69.json  Q/neighbor.json
+ * Simualte qt-birds evolution along the JeremyCRBD tree using a single nucleotide and single character;
+ * with fixed rates rescaled for one nucleotide;
+ * Mk and JC69 models.
+ 
+webppl qtbirds-sim.wppl --require fasta2json --require . --require webppl-fs --require phyjs -- phylo/single-nuc.fasta phylo/jeremy-crbd.tre.phyjson rates/fixed-a-scale1.json pheno/2state.json nucleo/jc69.Q.json pheno/mk-2state.Q.json 1
+ 
  * 
  */
 

@@ -1,5 +1,6 @@
 /**
 * @file Inference engine for Q-T-Birds Algorithm 2
+* (indirect, uses belief propagation)
 * @author Viktor Senderov
 * 
 * PREREQUISITES

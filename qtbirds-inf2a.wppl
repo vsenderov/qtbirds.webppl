@@ -1,5 +1,6 @@
 /**
 * @file Inference engine for Q-T-Birds Algorithm 2
+* Indirect approach. Fixes ν to 0
 * @author Viktor Senderov
 * 
 * PREREQUISITES
@@ -31,6 +32,9 @@
 *   Q-PHENO.json - phenotypic Q-matrix [arg6]
 *   "experiment" - the name of the experiment as a string [arg7]
 * 
+
+webppl qtbirds-inf2a.wppl --require fasta2json --require . --require webppl-fs --require phyjs --require mathjs --  phylo/single-nuc.fasta  phylo/jeremy-crbd_fixed-a-scale1.tre.phyjson rates/prior1.json pheno/2state.json nucleo/jc69.Q.json pheno/mk-2state.Q.json test 2 1000
+
 */
 
 // read the molecular data from argument 1
@@ -79,7 +83,7 @@ var model = function () {
 
   var lam = gamma({ shape: rates.lam.shape, scale: rates.lam.scale })
   var mu = gamma({ shape: rates.mu.shape, scale: rates.mu.scale })
-  var nu = 0.000001
+  var nu = 10e-12
 
   var molecularModel = {
     rate: mu,
