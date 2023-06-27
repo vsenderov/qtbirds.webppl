@@ -457,6 +457,17 @@ var getCharacterMessage = function(node, nChar) {
 }
 
 
+// Gets the combined message of the nucleotide and the character at that position
+// For now we only support JC-69 x Mk
+var getCombinedMessage = function(i, node) {
+  if (node.combinedMessage) return node.combinedMessage
+  else {   
+    var combinedState = node.stateSequence[i]*2 + node.characterState
+    return messJC69x2stateMk[combinedState]
+  }
+}
+
+
 /**
  * Like coalesce but returns a "leaf" with a sequence on it
  *    (algorithm 2)
@@ -808,6 +819,39 @@ var transition_probabilities_n = function(Q) {
 }
 
 
+
+
+/**
+ * Makes a full model from JC69 and a two state Mk
+ * 
+ * a very special case
+ * 
+ * @param lam molecular model rate 
+ * @param mu phenotypic model rate 
+ * @param nu mixed model rate
+ * 
+ * @return Full model Q matrix
+ */
+var makeJC69x2stateMk = function(lam, mu, nu) {
+  
+  var fullQ = [
+  //(T,0)         (T,1)        (C,0)      (C,1)      (A,0)       (A,1)      (G,0)        (G,1)   
+    [ -nu-mu-lam, mu,          lam/3,     nu/3,      lam/3,       nu/3,      lam/3,      nu/3 ],   // (T,0)
+    [ mu,        -nu-mu-lam,   nu/3,      lam/3,      nu/3,       lam/3,     nu/3,       lam/3 ],  // (T,1)
+    [ lam/3,      nu/3,       -nu-mu-lam, mu,        lam/3,       nu/3,      lam/3,      nu/3 ],   // (C,0)
+    [ nu/3,       lam/3,       mu,        -nu-mu-lam, nu/3,       lam/3,     nu/3,       lam/3 ],  // (C,1)
+    [ lam/3,      nu/3,        lam/3,     nu/3,       -nu-mu-lam, mu,        lam/3,      nu/3 ],   // (A,0)
+    [ nu/3,       lam/3,       nu/3,      lam/3,      mu,         -nu-mu-lam, nu/3,      lam/3 ],  // (A,1)
+    [ lam/3,      nu/3,        lam/3,     nu/3,       lam/3,      nu/3,      -nu-mu-lam, mu ],     // (G,0)
+    [ nu/3,       lam/3,       nu/3,      lam/3,      nu/3,       lam/3,      mu,        -nu-mu-lam ]  // (G,1)   
+  ];
+
+  return fullQ;
+}
+
+
+
+
 /**
  * Process the tree recursively and add s-jumps
  * need to preserve annotations
@@ -977,6 +1021,48 @@ var coalesceSTreeSingleNuc = function(i, N, sTree, molecularModel) {
 }
 
 
+/**
+ * Coalesces a tree w.r.t. a single nucleotide using the full model
+ * @param i 
+ * @param tree annotated tree 
+ * @param fullModel 
+ * @returns 
+ */
+var coalesceTreeFullModel = function(i, tree, fullModel) {
+  if (tree.left.type == 'leaf' && tree.right.type == 'leaf') {
+    return(coalesceBPTFullModel(i, tree, fullModel))
+  } else if (tree.left.type == 'leaf' && tree.right.type == 'node') {
+      var newTree = {
+        type: 'node',
+        left: tree.left,
+        right: coalesceTreeFullModel(i, tree.right, fullModel),
+        age: tree.age,
+        index: tree.index
+      }
+    return coalesceBPTFullModel(i, newTree, fullModel)
+  } else if (tree.left.type == 'node' && tree.right.type == 'leaf') {
+      var newTree = {
+        type: 'node',
+        left: coalesceTreeFullModel(i, tree.left, fullModel),
+        right: tree.right,
+        age: tree.age,
+        index: tree.index
+        
+      }
+      return coalesceBPTFullModel(i, newTree, fullModel)
+  } else { // node and node
+      var newTree = {
+        type: 'node',
+        left: coalesceTreeFullModel(i, tree.left, fullModel),
+        right: coalesceTreeFullModel(i, tree.right, fullModel),
+        age: tree.age,
+        index: tree.index
+      }
+      return coalesceBPTFullModel(i, newTree, fullModel)
+  }
+}
+
+
 var coalesceSingleNucBPT = function(i, N, sTree, molecularModel) {
   var leftTime = sTree.age - sTree.left.age
   var rightTime = sTree.age - sTree.right.age
@@ -1005,5 +1091,35 @@ var coalesceSingleNucBPT = function(i, N, sTree, molecularModel) {
     position: i,
     leftNs: sTree.leftNs,
     rightNs: sTree.rightNs
+  }
+}
+
+
+
+var coalesceBPTFullModel = function(i, tree, fullModel) {
+  var leftTime = tree.age - tree.left.age
+  var rightTime = tree.age - tree.right.age
+  // What are the messages here?  Since we use the full model,
+  // the messages are likelihood vectors over the nuc x character possible states
+  var leftMessage = getCombinedMessage(i, tree.left)
+  var rightMessage = getCombinedMessage(i, tree.right)
+ 
+  var computeProbSingleNuc = function(message, time, s) {
+    var p = function(m) {
+      mExpQtrs(m, fullModel.Q, time, fullModel.rate, s)
+    }
+    return p(message)
+  }
+  
+  var leftProbSingleNuc = computeProbSingleNuc(leftMessage, leftTime, 0)
+  var rightProbSingleNuc = computeProbSingleNuc(rightMessage, rightTime, 0)
+  var newMessage = mathjs.dotMultiply(leftProbSingleNuc, rightProbSingleNuc).valueOf()
+
+  return {
+    type: 'leaf',
+    age: tree.age,
+    index: tree.index,
+    combinedMessage: newMessage,
+    position: i
   }
 }
