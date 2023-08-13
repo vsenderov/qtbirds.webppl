@@ -188,6 +188,7 @@ var evolve2 = function( time, startStateSeq, startCharState, phenotypeModel, mol
   // Evolve the characters as well
   var numCharTrans = sample(Poisson({mu: (phenotypeModel.lam * time + numSJumps)})) 
   // TODO think if this should not be sample(Poisson({mu: (phenotypeModel.lam * time)}) + numSJumps
+  // (vsend 2023-08-12) yes, of course, these jumps have already happened
 
   var endCharState = evolveChar(startCharState, numCharTrans, phenotypeModel)
 
@@ -297,6 +298,9 @@ var coalesce_annotatedTree = function(annotTree,  phenotypeModel, molecularModel
 /**
  * Coalesces an annotated tree algorithm 2
  * 
+ * (vsend, 2023-08-12) needs review probably wrong as probably mixes continuoys and discrete processes;
+ * for now we are abandoning algorithm 2 anyway
+ * 
  *   - does not decode the tips
  *   -
  * 
@@ -341,6 +345,57 @@ var coalesce_annotatedTree2 = function(annotTree,  phenotypeModel, molecularMode
       index: annotTree.index
     }
     return (coalesce_binaryPathTree2(newTree, phenotypeModel, molecularModel, mixedModel))
+  }
+}
+
+
+/**
+ * Coalesces an annotated tree Algorithm 1 -- message passing version
+ * 
+ *   - does not decode the tips
+ *   
+ * 
+ * @param annotTree 
+ * @param fun 
+ * @param phenoMod
+ * @param molMod
+ * @param mixedMod
+ * 
+ * @return Collapses the tree as one "leaf", which has the coaleseced sequence and character
+ *   at the root.  Also conditions the weight in the process.
+ */
+var coalesce_annotatedTree_mp = function(annotTree,  phenotypeModel, molecularModel, mixedModel) {
+  // if both and left and right are leaves, we have a binary path tree and we can run
+  // conditional sequence evolutionbackwards
+  if (annotTree.left.type == 'leaf' && annotTree.right.type == 'leaf') {
+    return (coalesce_binaryPathTree_mp(annotTree, phenotypeModel, molecularModel, mixedModel))
+  } else if (annotTree.left.type == 'leaf' && annotTree.right.type == 'node') {
+    var newTree = {
+      type: 'node',
+      left: annotTree.left,
+      right: coalesce_annotatedTree_mp(annotTree.right,  phenotypeModel, molecularModel, mixedModel),
+      age: annotTree.age,
+      index: annotTree.index
+    }
+    return (coalesce_binaryPathTree_mp(newTree, phenotypeModel, molecularModel, mixedModel))
+  } else if (annotTree.left.type == 'node' && annotTree.right.type == 'leaf') {
+    var newTree = {
+      type: 'node',
+      left: coalesce_annotatedTree_mp(annotTree.left,  phenotypeModel, molecularModel, mixedModel),
+      right: annotTree.right,
+      age: annotTree.age,
+      index: annotTree.index
+    }
+    return (coalesce_binaryPathTree_mp(newTree, phenotypeModel, molecularModel, mixedModel))
+  } else {
+    var newTree = {
+      type: 'node',
+      left: coalesce_annotatedTree_mp(annotTree.left,  phenotypeModel, molecularModel, mixedModel),
+      right: coalesce_annotatedTree_mp(annotTree.right,  phenotypeModel, molecularModel, mixedModel),
+      age: annotTree.age,
+      index: annotTree.index
+    }
+    return (coalesce_binaryPathTree_mp(newTree, phenotypeModel, molecularModel, mixedModel))
   }
 }
 
@@ -471,6 +526,9 @@ var getCombinedMessage = function(i, node) {
 /**
  * Like coalesce but returns a "leaf" with a sequence on it
  *    (algorithm 2)
+ * 
+ * 2023-08-12 probably wrong as can mix continuous and discrete processes
+ * 
  * @param binaryPathTree - tree with decoded sequences, which only has two leafs.
  * @param phenotypeModel 
  * @param molecularModel 
@@ -543,7 +601,98 @@ var coalesce_binaryPathTree2 = function(binaryPathTree, phenotypeModel, molecula
 }
 
 
+
 /**
+ * Like coalesce but returns a "leaf" with a sequence on it
+ *    (algorithm 1 but with message passing)
+ * 
+ * @param binaryPathTree - tree with decoded sequences, which only has two leafs.
+ * @param phenotypeModel 
+ * @param molecularModel 
+ * @param mixedModel 
+ * @return "leaf"
+ */
+var coalesce_binaryPathTree_mp = function(binaryPathTree, phenotypeModel, molecularModel, mixedModel) {
+  var leftTime = binaryPathTree.age - binaryPathTree.left.age
+  var rightTime = binaryPathTree.age - binaryPathTree.right.age
+
+  var leftMesSeq = getMessageSequence(binaryPathTree.left)
+  var rightMesSeq = getMessageSequence(binaryPathTree.right)
+
+  var leftCharMes = getCharacterMessage(binaryPathTree.left, phenotypeModel.characters.length)
+  var rightCharMes = getCharacterMessage(binaryPathTree.right, phenotypeModel.characters.length)
+
+  if (!(leftMesSeq.length == rightMesSeq.length)) {
+    console.log("Messages of differing length!")
+    return -Infinity
+  }
+
+  var N = leftMesSeq.length 
+
+  // we ought to take care of the s-jumps here!
+  //var leftNs = poisson({mu: mixedModel.rate * leftTime})
+  //var rightNs = poisson({mu: mixedModel.rate * rightTime})
+  //var p = 1/N
+
+  /**
+   * Computes the transient (hidden) state probabilities after simulating evolution along
+   * a branch
+   * 
+   * @param mesSeq an array the length of the nucleotide sequence,
+   *               the elements of which are vectors containing probabilities
+   *               for being in each of the allowable states at that place
+   *               in the sequence
+   */
+  var computeProbSeq = function(mesSeq, time) {
+
+    var p = function(m) {
+      // for the particular molecular character, we need to sample the additional s-jimps
+      var s = sample(Poisson({mu: mixedModel.rate * time}))
+      var r = mExpQPtrs(m, molecularModel.Q, molecularModel.P_full, time, molecularModel.rate, s)
+      return {s: s, r:r}
+    }
+    var mapRes = map(p, mesSeq)
+
+    var rArray = map(function(obj) { return obj.r; }, mapRes);
+  
+    // Compute the sum of all s values
+    var sSum = reduce(function(obj, accumulator) { return accumulator + obj.s; }, 0, mapRes);
+    
+    return {sSum: sSum, rArray: rArray}
+  }
+
+  var leftResult = computeProbSeq(leftMesSeq, leftTime)
+  var leftProbSeq = leftResult.rArray 
+  var leftNs = leftResult.sSum
+
+  var rightResult = computeProbSeq(rightMesSeq, rightTime)
+  var rightProbSeq = rightResult.rArray
+  var rightNs = rightResult.sSum
+  // now these will become the new messages after coalescing
+  // elementwise leftProbSeq and rightProbSeq to get newMessageSequence
+  var newMessageSequence = mapN(function(i) { return mathjs.dotMultiply(leftProbSeq[i], rightProbSeq[i]).valueOf() }, N)
+
+  var computeCharProb = function(charMes, time, s) {
+    return  mExpQPtrs(charMes, phenotypeModel.Q, phenotypeModel.P_full, time, phenotypeModel.rate, s)
+  }
+
+  var leftCharMes = computeCharProb(leftCharMes, leftTime, leftNs)
+  var rightCharMes =  computeCharProb(rightCharMes, rightTime, rightNs)
+
+  var newCharacterMessage = mathjs.dotMultiply(leftCharMes, rightCharMes).valueOf()
+
+  return {
+    type: 'leaf',
+    age: binaryPathTree.age,
+    index: binaryPathTree.index,
+    messageSequence: newMessageSequence, // to avoid having to decode again
+    characterMessage: newCharacterMessage
+  } 
+}
+
+
+/**
+ * 2023-08-12 probably buggy function due to mix of discrete and cont time
  * Calculates the product of a given matrix 'm' and the exponentiated product
  * of a substitution rate matrix 'Q', a time 't', and a rate 'r'.
  * 
@@ -567,6 +716,22 @@ var mExpQtrs = function(m, Q, t, r, s) {
   var expQt = mathjs.expm(mathjs.multiply(Q, t*r + s));
   return mathjs.multiply(m, expQt);
 };
+
+
+var mExpQPtrs = function(m, Q, P, t, r, s) {
+  // Compute exp(Qtr)
+  var expQtr = mathjs.expm(mathjs.multiply(Q, t * r));
+
+  // Compute P^s
+  var Ppower = mathjs.pow(P, s);
+
+  // Multiply exp(Qtr) with P^s
+  var productMatrix = mathjs.multiply(expQtr, Ppower);
+
+  // Multiply m with the result
+  return mathjs.multiply(m, productMatrix);
+};
+
 
 
 /**
@@ -819,6 +984,24 @@ var transition_probabilities_n = function(Q) {
 }
 
 
+var transition_probabilities_full = function(Q) {
+  var P = mapN(
+    function(row) {
+      return mapN(
+        function(col) {
+          if (row !== col) {
+            return -Q[row][col] / Q[row][row];
+          } else {
+            return 0; // Diagonal entries in P are 0
+          }
+        },
+        Q.length
+      );
+    }, 
+    Q.length
+  );
+  return P;
+}
 
 
 /**
