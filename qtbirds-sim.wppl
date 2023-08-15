@@ -47,6 +47,7 @@ webppl qtbirds-sim.wppl --require fasta2json --require . --require webppl-fs --r
 
 // read the molecular data from argument 1
 var fasta = fasta2json.ReadFasta(argv["_"][1])
+var geneLength = fasta.length
 var startNucSeq = fasta[0].seq // TODO potential issue with multiple sequences
 var startStateSeq = map( 
   function(element) { nucleotides.indexOf(element) },
@@ -100,7 +101,7 @@ var PChar = transition_probabilities_n(QChar)
 var nextStatesChar = possible_next_states(nChar)
 
 var phenotypeModel = {
-  rate: lam,
+  rate: lam/geneLength,
   Q: QChar,
   P: PChar,
   nextStates: nextStatesChar,
@@ -108,7 +109,7 @@ var phenotypeModel = {
 }
 
 var mixedModel = {
-  rate: nu
+  rate: nu/geneLength
 }
 
 var model = function() {
