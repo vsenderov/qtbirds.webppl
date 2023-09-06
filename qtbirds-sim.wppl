@@ -47,8 +47,8 @@ webppl qtbirds-sim.wppl --require fasta2json --require . --require webppl-fs --r
 
 // read the molecular data from argument 1
 var fasta = fasta2json.ReadFasta(argv["_"][1])
-var geneLength = fasta.length
 var startNucSeq = fasta[0].seq // TODO potential issue with multiple sequences
+var geneLength = startNucSeq.length
 var startStateSeq = map( 
   function(element) { nucleotides.indexOf(element) },
   startNucSeq

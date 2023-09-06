@@ -632,7 +632,7 @@ var coalesce_binaryPathTree_mp = function(binaryPathTree, phenotypeModel, molecu
   // we ought to take care of the s-jumps here!
   //var leftNs = poisson({mu: mixedModel.rate * leftTime})
   //var rightNs = poisson({mu: mixedModel.rate * rightTime})
-  //var p = 1/N
+  var u = 1/N
 
   /**
    * Computes the transient (hidden) state probabilities after simulating evolution along
@@ -647,7 +647,7 @@ var coalesce_binaryPathTree_mp = function(binaryPathTree, phenotypeModel, molecu
 
     var p = function(m) {
       // for the particular molecular character, we need to sample the additional s-jimps
-      var s = sample(Poisson({mu: mixedModel.rate * time}))
+      var s = sample(Poisson({mu: mixedModel.rate * time * u}))
       var r = mExpQPtrs(m, molecularModel.Q, molecularModel.P_full, time, molecularModel.rate, s)
       return {s: s, r:r}
     }
