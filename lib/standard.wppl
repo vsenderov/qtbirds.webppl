@@ -368,32 +368,47 @@ var coalesce_annotatedTree_mp = function(annotTree,  phenotypeModel, molecularMo
   // if both and left and right are leaves, we have a binary path tree and we can run
   // conditional sequence evolutionbackwards
   if (annotTree.left.type == 'leaf' && annotTree.right.type == 'leaf') {
-    return (coalesce_binaryPathTree_mp(annotTree, phenotypeModel, molecularModel, mixedModel))
-  } else if (annotTree.left.type == 'leaf' && annotTree.right.type == 'node') {
     var newTree = {
       type: 'node',
       left: annotTree.left,
-      right: coalesce_annotatedTree_mp(annotTree.right,  phenotypeModel, molecularModel, mixedModel),
+      right: annotTree.right,
       age: annotTree.age,
-      index: annotTree.index
+      index: annotTree.index,
+      partialLogWeight: 0
+    }
+    return (coalesce_binaryPathTree_mp(newTree, phenotypeModel, molecularModel, mixedModel))
+  } else if (annotTree.left.type == 'leaf' && annotTree.right.type == 'node') {
+    var rightTree = coalesce_annotatedTree_mp(annotTree.right,  phenotypeModel, molecularModel, mixedModel)
+    var newTree = {
+      type: 'node',
+      left: annotTree.left,
+      right: rightTree,
+      age: annotTree.age,
+      index: annotTree.index,
+      partialLogWeight: rightTree.partialLogWeight
     }
     return (coalesce_binaryPathTree_mp(newTree, phenotypeModel, molecularModel, mixedModel))
   } else if (annotTree.left.type == 'node' && annotTree.right.type == 'leaf') {
+    var leftTree = coalesce_annotatedTree_mp(annotTree.left,  phenotypeModel, molecularModel, mixedModel)
     var newTree = {
       type: 'node',
-      left: coalesce_annotatedTree_mp(annotTree.left,  phenotypeModel, molecularModel, mixedModel),
+      left: leftTree,
       right: annotTree.right,
       age: annotTree.age,
-      index: annotTree.index
+      index: annotTree.index,
+      partialLogWeight: leftTree.partialLogWeight
     }
     return (coalesce_binaryPathTree_mp(newTree, phenotypeModel, molecularModel, mixedModel))
   } else {
+    var leftTree = coalesce_annotatedTree_mp(annotTree.left,  phenotypeModel, molecularModel, mixedModel)
+    var rightTree = coalesce_annotatedTree_mp(annotTree.right,  phenotypeModel, molecularModel, mixedModel)
     var newTree = {
       type: 'node',
-      left: coalesce_annotatedTree_mp(annotTree.left,  phenotypeModel, molecularModel, mixedModel),
-      right: coalesce_annotatedTree_mp(annotTree.right,  phenotypeModel, molecularModel, mixedModel),
+      left: leftTree,
+      right: rightTree,
       age: annotTree.age,
-      index: annotTree.index
+      index: annotTree.index,
+      partialLogWeight: leftTree.partialLogWeight + rightTree.partialLogWeight
     }
     return (coalesce_binaryPathTree_mp(newTree, phenotypeModel, molecularModel, mixedModel))
   }
@@ -672,6 +687,14 @@ var coalesce_binaryPathTree_mp = function(binaryPathTree, phenotypeModel, molecu
   // elementwise leftProbSeq and rightProbSeq to get newMessageSequence
   var newMessageSequence = mapN(function(i) { return mathjs.dotMultiply(leftProbSeq[i], rightProbSeq[i]).valueOf() }, N)
 
+  // Compute partial likelihood of sequence already here
+  var f = function(m) {
+    //factor( Math.log(mathjs.sum(m)))
+    return Math.log(mathjs.sum(m))
+  }
+
+  var logWeightSeqArray = map(f, newMessageSequence)
+
   var computeCharProb = function(charMes, time, s) {
     return  mExpQPtrs(charMes, phenotypeModel.Q, phenotypeModel.P_full, time, phenotypeModel.rate, s)
   }
@@ -681,12 +704,21 @@ var coalesce_binaryPathTree_mp = function(binaryPathTree, phenotypeModel, molecu
 
   var newCharacterMessage = mathjs.dotMultiply(leftCharMes, rightCharMes).valueOf()
 
+  // We have the message here, we can condition on it
+  // TODO Ideally we want to take into account equilibrium probabilities but for now we will ignore them
+  var logWeightChar = Math.log(mathjs.sum(newCharacterMessage))
+  var partialLogWeight = mathjs.sum(logWeightSeqArray) + logWeightChar
+  
+  factor(-binaryPathTree.partialLogWeight) // undo the previous borrowed weight
+  factor(partialLogWeight) // add the new partial weight
+
   return {
     type: 'leaf',
     age: binaryPathTree.age,
     index: binaryPathTree.index,
     messageSequence: newMessageSequence, // to avoid having to decode again
-    characterMessage: newCharacterMessage
+    characterMessage: newCharacterMessage,
+    partialLogWeight: partialLogWeight
   } 
 }
 

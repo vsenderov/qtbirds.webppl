@@ -31,6 +31,9 @@
 *   Q-PHENO.json - phenotypic Q-matrix [arg6]
 *   "experiment" - the name of the experiment as a string [arg7]
 * 
+
+webppl qtbirds-inf-mp.wppl --require fasta2json --require . --require webppl-fs --require phywppl/phyjs --require mathjs --  phylo/single-nuc.fasta test.json rates/prior1-control.json pheno/2state.json nucleo/jc69.Q.json pheno/mk-2state.Q.json test 5 5000
+
 */
 
 // read the molecular data from argument 1
@@ -119,19 +122,22 @@ var model = function () {
   // 5. finally compute the character and condition
 
   // For now I am going to do something stupid (not use equilibrium frequencies)
-  //factor(Math.log(mathjs.sum(cTree.characterMessage)))
-  var logWeightChar = Math.log(mathjs.sum(cTree.characterMessage))
+  // TODO use equilibrium frequencies
+  // factor(Math.log(mathjs.sum(cTree.characterMessage)))
 
-  var f = function(m) {
-    //factor( Math.log(mathjs.sum(m)))
-    return Math.log(mathjs.sum(m))
-  }
+  // following lines not needed any more as we are doing the factoring and refactoring inside coalesce_annotatedTree_mp
+  // var logWeightChar = Math.log(mathjs.sum(cTree.characterMessage))
 
-  //map(f, cTree.messageSequence)
-  var logWeightSeqArray = map(f, cTree.messageSequence)
+  // var f = function(m) {
+  //   //factor( Math.log(mathjs.sum(m)))
+  //   return Math.log(mathjs.sum(m))
+  // }
 
-  var totalLogWeight = mathjs.sum(logWeightSeqArray) + logWeightChar
-  factor(totalLogWeight)
+  // //map(f, cTree.messageSequence)
+  // var logWeightSeqArray = map(f, cTree.messageSequence)
+
+  // var totalLogWeight = mathjs.sum(logWeightSeqArray) + logWeightChar
+  // factor(totalLogWeight)
 
 
   return { lam, mu, nu }
