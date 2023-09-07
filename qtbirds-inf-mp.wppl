@@ -123,21 +123,21 @@ var model = function () {
 
   // For now I am going to do something stupid (not use equilibrium frequencies)
   // TODO use equilibrium frequencies
-  // factor(Math.log(mathjs.sum(cTree.characterMessage)))
+  //factor(Math.log(mathjs.sum(cTree.characterMessage)))
 
   // following lines not needed any more as we are doing the factoring and refactoring inside coalesce_annotatedTree_mp
-  // var logWeightChar = Math.log(mathjs.sum(cTree.characterMessage))
+  var logWeightChar = Math.log(mathjs.sum(cTree.characterMessage))
 
-  // var f = function(m) {
-  //   //factor( Math.log(mathjs.sum(m)))
-  //   return Math.log(mathjs.sum(m))
-  // }
+  var f = function(m) {
+     //factor( Math.log(mathjs.sum(m)))
+     return Math.log(mathjs.sum(m))
+  }
 
-  // //map(f, cTree.messageSequence)
-  // var logWeightSeqArray = map(f, cTree.messageSequence)
+  //map(f, cTree.messageSequence)
+  var logWeightSeqArray = map(f, cTree.messageSequence)
 
-  // var totalLogWeight = mathjs.sum(logWeightSeqArray) + logWeightChar
-  // factor(totalLogWeight)
+  var totalLogWeight = mathjs.sum(logWeightSeqArray) + logWeightChar
+  factor(totalLogWeight)
 
 
   return { lam, mu, nu }
