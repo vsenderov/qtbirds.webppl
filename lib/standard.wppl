@@ -676,16 +676,67 @@ var coalesce_binaryPathTree_mp = function(binaryPathTree, phenotypeModel, molecu
     return {sSum: sSum, rArray: rArray}
   }
 
-  var leftResult = computeProbSeq(leftMesSeq, leftTime)
-  var leftProbSeq = leftResult.rArray 
-  var leftNs = leftResult.sSum
+  // Helper function to add two arrays element-wise
+  var addArrays = function (arr1, arr2) {
+    return mapIndexed(function(index, item) {
+      return Array.isArray(item) ? addArrays(item, arr2[index]) : item + arr2[index];
+  }, arr1);
+  }
 
-  var rightResult = computeProbSeq(rightMesSeq, rightTime)
-  var rightProbSeq = rightResult.rArray
-  var rightNs = rightResult.sSum
-  // now these will become the new messages after coalescing
-  // elementwise leftProbSeq and rightProbSeq to get newMessageSequence
-  var newMessageSequence = mapN(function(i) { return mathjs.dotMultiply(leftProbSeq[i], rightProbSeq[i]).valueOf() }, N)
+  // Helper function to divide each element of an array by a number
+  var divideArray = function (arr, num) {
+    return map(function(item) {
+      return Array.isArray(item) ? divideArray(item, num) : item / num;
+    }, arr);
+  }
+
+  var computeMessage = function() {
+    var leftResult = computeProbSeq(leftMesSeq, leftTime)
+    var leftProbSeq = leftResult.rArray 
+    var leftNs = leftResult.sSum
+  
+    var rightResult = computeProbSeq(rightMesSeq, rightTime)
+    var rightProbSeq = rightResult.rArray
+    var rightNs = rightResult.sSum
+    // now these will become the new messages after coalescing
+    // elementwise leftProbSeq and rightProbSeq to get newMessageSequence
+    var newMessageSequence = mapN(function(i) { return mathjs.dotMultiply(leftProbSeq[i], rightProbSeq[i]).valueOf() }, N)
+  
+    var computeCharProb = function(charMes, time, s) {
+      return  mExpQPtrs(charMes, phenotypeModel.Q, phenotypeModel.P_full, time, phenotypeModel.rate, s)
+    }
+  
+    var leftCharMes = computeCharProb(leftCharMes, leftTime, leftNs)
+    var rightCharMes =  computeCharProb(rightCharMes, rightTime, rightNs)
+  
+    var newCharacterMessage = mathjs.dotMultiply(leftCharMes, rightCharMes).valueOf()
+  
+    return {newCharacterMessage, newMessageSequence}
+  }
+
+  // Recursive function to accumulate results over M computations
+  var accumulateMessages = function (M, m, accumulatedCharacterMessage, accumulatedMessageSequence) {
+    if (m === 0) {
+        return {
+            newCharacterMessage: divideArray(accumulatedCharacterMessage, M), // Assuming you want to compute messages 100 times
+            newMessageSequence: divideArray(accumulatedMessageSequence, M)
+        };
+    } else {
+        var result = computeMessage();
+        var updatedCharacterMessage = addArrays(accumulatedCharacterMessage, result.newCharacterMessage);
+        var updatedMessageSequence = addArrays(accumulatedMessageSequence, result.newMessageSequence);
+        return accumulateMessages(M, m - 1, updatedCharacterMessage, updatedMessageSequence);
+    }
+  }
+
+  var initialMessages = computeMessage()
+  var initialCharacterMessage =  initialMessages.newCharacterMessage 
+  var initialMessageSequence = initialMessages.newMessageSequence
+
+  var rr = accumulateMessages(5, 4, initialCharacterMessage, initialMessageSequence);
+
+  var newCharacterMessage = rr.newCharacterMessage;
+  var newMessageSequence = rr.newMessageSequence;
 
   // Compute partial likelihood of sequence already here
   var f = function(m) {
@@ -693,23 +744,14 @@ var coalesce_binaryPathTree_mp = function(binaryPathTree, phenotypeModel, molecu
     return Math.log(mathjs.sum(m))
   }
 
-  var logWeightSeqArray = map(f, newMessageSequence)
-
-  var computeCharProb = function(charMes, time, s) {
-    return  mExpQPtrs(charMes, phenotypeModel.Q, phenotypeModel.P_full, time, phenotypeModel.rate, s)
-  }
-
-  var leftCharMes = computeCharProb(leftCharMes, leftTime, leftNs)
-  var rightCharMes =  computeCharProb(rightCharMes, rightTime, rightNs)
-
-  var newCharacterMessage = mathjs.dotMultiply(leftCharMes, rightCharMes).valueOf()
-
+  //var logWeightSeqArray = map(f, newMessageSequence)
+    
   // We have the message here, we can condition on it
   // TODO Ideally we want to take into account equilibrium probabilities but for now we will ignore them
-  var logWeightChar = Math.log(mathjs.sum(newCharacterMessage))
-  var partialLogWeight = mathjs.sum(logWeightSeqArray) + logWeightChar
+  //var logWeightChar = Math.log(mathjs.sum(newCharacterMessage))
+  //var partialLogWeight = mathjs.sum(logWeightSeqArray) + logWeightChar
   
-  factor(partialLogWeight - binaryPathTree.partialLogWeight) // add the new partial weight
+  //factor(partialLogWeight - binaryPathTree.partialLogWeight) // add the new partial weight
 
   return {
     type: 'leaf',
@@ -717,7 +759,7 @@ var coalesce_binaryPathTree_mp = function(binaryPathTree, phenotypeModel, molecu
     index: binaryPathTree.index,
     messageSequence: newMessageSequence, // to avoid having to decode again
     characterMessage: newCharacterMessage,
-    partialLogWeight: partialLogWeight
+    //partialLogWeight: partialLogWeight
   } 
 }
 
