@@ -709,8 +709,7 @@ var coalesce_binaryPathTree_mp = function(binaryPathTree, phenotypeModel, molecu
   var logWeightChar = Math.log(mathjs.sum(newCharacterMessage))
   var partialLogWeight = mathjs.sum(logWeightSeqArray) + logWeightChar
   
-  factor(-binaryPathTree.partialLogWeight) // undo the previous borrowed weight
-  factor(partialLogWeight) // add the new partial weight
+  factor(partialLogWeight - binaryPathTree.partialLogWeight) // add the new partial weight
 
   return {
     type: 'leaf',
